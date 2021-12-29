@@ -1,0 +1,39 @@
+{
+  "name": "bluecloudmachine-blog",
+  "version": "0.0.1",
+  "description": "bluecloudmachine content generator.",
+  "scripts": {
+    "build": "eleventy",
+    "watch": "eleventy --watch",
+    "serve": "eleventy --serve",
+    "start": "eleventy --serve",
+    "debug": "DEBUG=* eleventy"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/cpinotossi/bluecloudmachine-blog.git"
+  },
+  "author": {
+    "name": "cpt",
+    "email": "cpt@bluecloudmachine.org",
+    "url": "https://bluecloudmachine.org/"
+  },
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/cpinotossi/bluecloudmachine-blog/issues"
+  },
+  "homepage": "https://bluecloudmachine.org/",
+  "devDependencies": {
+    "@11ty/eleventy": "^0.12.1",
+    "@11ty/eleventy-navigation": "^0.3.2",
+    "@11ty/eleventy-plugin-rss": "^1.1.1",
+    "@11ty/eleventy-plugin-syntaxhighlight": "^3.1.2",
+    "luxon": "^1.26.0",
+    "markdown-it": "^12.1.0",
+    "markdown-it-anchor": "^8.1.2"
+  },
+  "dependencies": {
+    "@11ty/eleventy-img": "^1.0.0",
+    "concurrently": "^6.5.1"
+  }
+}
