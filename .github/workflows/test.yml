@@ -24,4 +24,4 @@ jobs:
       - name: Run a multi-line script
         run: |
           echo Add other actions to build,
-          echo ${BRANCH_NAME}
+          echo ${GITHUB_REF}
