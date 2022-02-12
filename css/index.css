@@ -13,6 +13,10 @@ p:last-child {
 p,
 .tmpl-post li,
 
+hr {
+  border-top: 1px solid #d1caca;
+}
+
 img {
   max-width: 100%;
 }

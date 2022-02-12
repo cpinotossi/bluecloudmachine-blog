@@ -380,7 +380,6 @@ Output should look as follow:
 
 ~~~ text
 PS :\> func azure functionapp logstream funalert-func
-2021-03-26T12:07:01.491 [Information] "caller": "ga@myedge.org",
 2021-03-26T12:07:01.492 [Information] "correlationId": "c9547a1c-846d-4cd9-b5bc-4009dfe9c4f1",
 2021-03-26T12:07:01.492 [Information] "description": "",
 2021-03-26T12:07:01.492 [Information] "eventSource": "Administrative",

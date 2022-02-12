@@ -1,5 +1,73 @@
 # bluecloudmachine-blog
 
+Build and run 11th localy.
+
+~~~ text
+npm run build
+npm run start
+startedgeguest --url http://localhost:8080
+~~~
+
+
+
+~~~ text
+prefix=cptdjamstack
+subid=$(az account show --query id -o tsv)
+az group create -n $prefix -l eastus
+az ad sp list --query [].displayName
+az ad sp create-for-rbac --name $prefix --role contributor --scopes /subscriptions/$subid/resourceGroups/$prefix --sdk-auth
+~~~
+
+
+
+openid auth.
+
+~~~ text
+az ad app create --display-name $prefix
+appid=$(az ad app list --query "[?displayName=='${prefix}'].appId" -o tsv)
+appobjectid=$(az ad app list --query "[?displayName=='${prefix}'].objectId" -o tsv)
+echo $appid $objectid
+az ad sp create --id $appid
+ssobjectid=$(az ad sp show --id $appid --query objectId -o tsv) 
+subid=$(az account show --query id -o tsv)
+az role assignment create --role contributor --subscription $subid --assignee-object-id  $ssobjectid --assignee-principal-type ServicePrincipal
+az rest --method POST --uri "https://graph.microsoft.com/beta/applications/${appobjectid}/federatedIdentityCredentials" --body '{"name":"cptdjamstack","issuer":"https://token.actions.githubusercontent.com","subject":"repo:cpinotossi/bluecloudmachine-blog:ref:refs/heads/main","description":"Testing","audiences":["api://AzureADTokenExchange"]}' --verbose
+~~~
+
+Clean up openid
+
+~~~ text
+az ad sp delete --id $appid
+az ad app list --query [].displayName
+az ad app delete --id $appobjectid
+~~~
+
+az group delete -n $prefix -y
+
+
+
+
+
+Test upload folder to azure blob storage.
+
+~~~ text
+mkdir test
+mv test.txt test/test.txt
+echo "hello world" > test.txt
+az storage blob upload-batch --account-name $prefix  --auth-mode login -d '$web' -s test
+ssurl=$(az storage account show -n $prefix -g $prefix --query primaryEndpoints.web -o tsv)
+curl -v $ssurl/test.txt
+~~~
+
+Git commands.
+
+~~~ text
+git status
+git remote get-url --all origin
+~~~
+
+
+
 
 
 sed -i 's/~~~~/~~~/g' posts/*.md
@@ -11,8 +79,13 @@ sed -i 's/~~~bicep/~~~ text/g' posts/*.md
 sed -i 's/~~~kusto/~~~ text/g' posts/*.md
 grep ~~~ posts/* | sort | uniq -c
 
+grep JSON posts/* | sort | uniq -c
+
 sed -i 's#(/images/#(/img/#g' posts/*.md
 sed -i 's#(images/#(/img/#g' posts/*.md
 sed -i 's#(/img/#(/img/cptdfun-alert/#g' posts/cptdfun-alert.md
 sed -i 's#(/img/#(/img/cptdagw-storage/#g' posts/cptdagw-storage.md
 grep -F '![' posts/* | sort | uniq -c
+
+
+
