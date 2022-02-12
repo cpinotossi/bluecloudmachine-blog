@@ -26,3 +26,4 @@ jobs:
           echo Add other actions to build,
           echo ${GITHUB_REF}
           echo ${GITHUB_PATH}
+          echo ${GITHUB_REPOSITORY}
