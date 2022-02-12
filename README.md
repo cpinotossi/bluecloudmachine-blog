@@ -19,6 +19,8 @@ az ad sp create-for-rbac --name $prefix --role contributor --scopes /subscriptio
 ~~~ text
 ssurl=$(az storage account show -n $prefix -g $prefix --query primaryEndpoints.web -o tsv)
 curl -v $ssurl/
+
+curl ifconfig.io
 ~~~
 
 openid auth.

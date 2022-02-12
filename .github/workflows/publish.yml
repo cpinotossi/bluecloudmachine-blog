@@ -5,7 +5,7 @@ on:
     branches: [ master ]
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
-  
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -14,18 +14,24 @@ jobs:
     - uses: azure/login@v1
       with:
           creds: ${{ secrets.cptdjamstack }}
-
+    - name: add github runner ip to storage acl
+      run: |
+            runnerip=$(curl ipconfig.io)
+            az storage account network-rule add -g cptdjamstack --account-name cptdjamstack --ip-address $runnerip
     - name: Upload to blob storage
       uses: azure/CLI@v1
       with:
         inlineScript: |
-            az storage blob upload-batch --account-name cptdjamstack --auth-mode key -d '$web' -s _site
+            az storage blob upload-batch --account-name cptdjamstack --auth-mode login -d '$web' -s _site
     #- name: Purge CDN endpoint
     #  uses: azure/CLI@v1
     #  with:
     #    inlineScript: |
     #       az cdn endpoint purge --content-paths  "/*" --profile-name "CDN_PROFILE_NAME" --name "CDN_ENDPOINT" --resource-group "RESOURCE_GROUP"
-
+    - name: remove github runner ip to storage acl
+      run: |
+            runnerip=$(curl ipconfig.io)
+            az storage account network-rule remove -g cptdjamstack --account-name cptdjamstack --ip-address $runnerip
   # Azure logout
     - name: logout
       run: |
