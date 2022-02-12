@@ -8,8 +8,6 @@ npm run start
 startedgeguest --url http://localhost:8080
 ~~~
 
-
-
 ~~~ text
 prefix=cptdjamstack
 subid=$(az account show --query id -o tsv)
@@ -18,7 +16,10 @@ az ad sp list --query [].displayName
 az ad sp create-for-rbac --name $prefix --role contributor --scopes /subscriptions/$subid/resourceGroups/$prefix --sdk-auth
 ~~~
 
-
+~~~ text
+ssurl=$(az storage account show -n $prefix -g $prefix --query primaryEndpoints.web -o tsv)
+curl -v $ssurl/
+~~~
 
 openid auth.
 
@@ -48,16 +49,6 @@ az group delete -n $prefix -y
 
 
 
-Test upload folder to azure blob storage.
-
-~~~ text
-mkdir test
-mv test.txt test/test.txt
-echo "hello world" > test.txt
-az storage blob upload-batch --account-name $prefix  --auth-mode login -d '$web' -s test
-ssurl=$(az storage account show -n $prefix -g $prefix --query primaryEndpoints.web -o tsv)
-curl -v $ssurl/test.txt
-~~~
 
 Git commands.
 

@@ -8,7 +8,5 @@ eleventyNavigation:
 ---
 <p>
 Hello
-</p>
-<p>
 {{ metadata.description }}
 </p>
