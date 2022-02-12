@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Azure Application Gateway, WAF and Certificate</title>
+    <meta name="description" content="How to use self signed certificates with Azure Application Gateway and WAF.">
+    <link rel="stylesheet" href="/css/index.css">
+  </head>
+  <body>
+    <header>
+      <h1 class="home"><a href="/">bluecloudmachine.org</a></h1>
+      <ul class="nav">
+        <li class="nav-item"><a href="/">Home</a></li>
+        <li class="nav-item"><a href="/about/">About Me</a></li>
+        <li class="nav-item"><a href="/posts/">Archive</a></li>
+      </ul>
+    </header>
+
+    <main class="tmpl-post">
+      <h1>Azure Application Gateway, WAF and Certificate</h1>
+
+<time datetime="2021-11-06">06 Nov 2021</time>
+
+<div><a href="/img/cptdagw-waf/picture1.png"><picture> <source type="image/webp" srcset=" /img/cptdagw-waf/vFuMX8xBUq-320.webp 320w , /img/cptdagw-waf/vFuMX8xBUq-640.webp 640w , /img/cptdagw-waf/vFuMX8xBUq-960.webp 960w ," > <img
+      loading="lazy"
+      alt="Azure Application Gateway"
+      src="/img/cptdagw-waf/vFuMX8xBUq-320.jpeg"
+      sizes="(max-width: 320px) 320px, (min-width: 640px) 640px, (min-width: 960px) 960px, 100vw"
+      srcset=" /img/cptdagw-waf/vFuMX8xBUq-320.jpeg 320w , /img/cptdagw-waf/vFuMX8xBUq-640.jpeg 640w , /img/cptdagw-waf/vFuMX8xBUq-960.jpeg 960w ,"> </picture></a></div>
+<p><a href="/img/cptdagw-waf/picture1.png">Image: Azure Application Gateway</a></p>
+<p>In this entry we will create:</p>
+<ul>
+<li>Azure Application Gateway [agw]</li>
+<li>self signed server certificate for frontend and backend of agw (will use the same cert for both).</li>
+<li>waf custom rule (scope httplistener)</li>
+<li>diagnostic settings for agw</li>
+</ul>
+<h2 id="create-resource-group" tabindex="-1">Create resource group <a class="direct-link" href="#create-resource-group" aria-hidden="true">#</a></h2>
+<hr>
+<pre class="language-text"><code class="language-text">az group create -n cptdagw -l eastus</code></pre>
+<h2 id="modify-parameters-file" tabindex="-1">Modify Parameters File <a class="direct-link" href="#modify-parameters-file" aria-hidden="true">#</a></h2>
+<hr>
+<p>Retrieve your object ID and update value &quot;MY-OBJECT-ID&quot; of the &quot;myObjectId&quot; property inside parameters.json accordently.<br>
+NOTE: Replace YOUR-USR-NAME with your account name in the following command</p>
+<pre class="language-text"><code class="language-text">az ad user list --query '[?displayName==`YOUR-USER-NAME`].objectId'</code></pre>
+<p>NOTE:<br>
+Your object ID is needed to assign you azure storage blob storage contributor role.</p>
+<h2 id="create-certificates" tabindex="-1">Create certificates <a class="direct-link" href="#create-certificates" aria-hidden="true">#</a></h2>
+<hr>
+<p>IMPORTANT: This step is option and if done you will need to update certain files. Instead you can just use the certificates already created under the folder openssl.</p>
+<p>Certificates will be created with the help of openssl and a corresponding config file (certificate.cnf).</p>
+<pre class="language-text"><code class="language-text">./create.certificates.sh</code></pre>
+<p>NOTE: The server certificate is referenced inside the bicep/agw.bicep file.</p>
+<pre class="language-text"><code class="language-text">var servercertificatefrontend = loadFileAsBase64('../openssl/cptdagw.org.svr.pfx')<br>var cacertificatebackend = loadFileAsBase64('../openssl/cptdagw.org.ca.crt')</code></pre>
+<h2 id="create-the-vnet" tabindex="-1">Create the vnet <a class="direct-link" href="#create-the-vnet" aria-hidden="true">#</a></h2>
+<hr>
+<pre class="language-text"><code class="language-text">az deployment group create -n create-vnet -g cptdagw --template-file bicep/vnet.bicep</code></pre>
+<h2 id="create-storage-account-with-blob" tabindex="-1">Create Storage Account with Blob <a class="direct-link" href="#create-storage-account-with-blob" aria-hidden="true">#</a></h2>
+<hr>
+<pre class="language-text"><code class="language-text">az deployment group create -n create-blob -g cptdagw --template-file bicep/sab.bicep</code></pre>
+<h2 id="upload-test.txt-file" tabindex="-1">Upload test.txt file <a class="direct-link" href="#upload-test.txt-file" aria-hidden="true">#</a></h2>
+<hr>
+<p>Following lines do not work:</p>
+<pre class="language-text"><code class="language-text">keyctl session workaroundSession<br>azcopy login --tenant-id myedge.org<br>echo 'hello world' | azcopy cp https://cptdagw.blob.core.windows.net/cptdagw/test.txt </code></pre>
+<p>NOTE:<br>
+You will need to upload via powershell, portal or storage explorer.</p>
+<h2 id="list-storage-account-container" tabindex="-1">List storage account container <a class="direct-link" href="#list-storage-account-container" aria-hidden="true">#</a></h2>
+<hr>
+<pre class="language-text"><code class="language-text">azcopy list https://cptdagw.blob.core.windows.net/cptdagw</code></pre>
+<h2 id="create-application-gateway" tabindex="-1">Create Application Gateway <a class="direct-link" href="#create-application-gateway" aria-hidden="true">#</a></h2>
+<hr>
+<pre class="language-text"><code class="language-text">az deployment group create -n create-agw -g cptdagw --template-file bicep/agw.bicep</code></pre>
+<h2 id="setup-node.js-https-server-on-vm" tabindex="-1">Setup node.js https server on vm <a class="direct-link" href="#setup-node.js-https-server-on-vm" aria-hidden="true">#</a></h2>
+<hr>
+<p>IMPORTANT:<br>
+This setup is optional. Everything will be already setup via the cloud-init file which does get used during the vm deployment.<br>
+But in case you like to setup the server by yourself (w/o the cloud-init) file please read the following section.</p>
+<p>The following instruction is based on the following article:</p>
+<ul>
+<li><a href="https://www.digitalocean.com/community/tutorials/how-to-set-up-a-node-js-application-for-production-on-ubuntu-16-04">https://www.digitalocean.com/community/tutorials/how-to-set-up-a-node-js-application-for-production-on-ubuntu-16-04</a></li>
+</ul>
+<p>Log into the vm via azure bastion host.</p>
+<p>Clone the git repo.</p>
+<pre class="language-text"><code class="language-text">github clone https://github.com/cpinotossi/cptdagw.git</code></pre>
+<p>Switch folder.</p>
+<pre class="language-text"><code class="language-text">cd cptdagw</code></pre>
+<p>Make server.js executable.</p>
+<pre class="language-text"><code class="language-text">chmod +x ./server.js</code></pre>
+<p>Install NPM module.</p>
+<pre class="language-text"><code class="language-text">sudo npm install -g pm2</code></pre>
+<p>Run server.js as service</p>
+<pre class="language-text"><code class="language-text">pm2 start ./server.js</code></pre>
+<h2 id="send-request-via-vm" tabindex="-1">Send request via vm <a class="direct-link" href="#send-request-via-vm" aria-hidden="true">#</a></h2>
+<hr>
+<p>Get AGW private IP</p>
+<pre class="language-text"><code class="language-text">az network application-gateway show -n cptdagw -g cptdagw --query frontendIpConfigurations[].privateIpAddress</code></pre>
+<p>NOTE:<br>
+You can get the public IP as follow</p>
+<pre class="language-text"><code class="language-text">az network public-ip show -n cptdagw -g cptdagw --query ipAddress</code></pre>
+<p>Log into the vm via bastion and send a request via curl.</p>
+<pre class="language-text"><code class="language-text"># 200 OK<br> curl -k -H'host:test.cptdagw.org' 'https://10.0.0.4/'<br>{<br>"x-forwarded-proto": "https",<br>"x-forwarded-port": "443",<br>"x-forwarded-for": "10.0.2.4:47904",<br>"x-original-url": "/",<br>"connection": "keep-alive",<br>"x-appgw-trace-id": "fbb1e0f840243e440e74de29ea5581bc",<br>"host": "test.cptdagw.org",<br>"x-original-host": "test.cptdagw.org",<br>"user-agent": "curl/7.58.0",<br>"accept": "*/*"<br>}<br># Blocked by WAF<br>curl -k -v -H'host:test.cptdagw.org' 'https://10.0.0.4/?cpt=evil2'<br>HTTP/1.1 403 Forbidden<br><br># 200 OK (No WAF configured)<br>curl -k -v -H'host:test.cptdagw.org' 'http://10.0.0.4/cptdagw/test.txt?cpt=evil2'<br>HTTP/1.1 200 OK</code></pre>
+<h2 id="find-the-corresponding-log" tabindex="-1">Find the corresponding log <a class="direct-link" href="#find-the-corresponding-log" aria-hidden="true">#</a></h2>
+<hr>
+<p>Get the log analytics workspace id.</p>
+<pre class="language-text"><code class="language-text">law=$(az monitor log-analytics workspace show -g cptdagw -n cptdagw --query customerId |sed 's/"//g')</code></pre>
+<p>Use the node.js helper script to format the http header &quot;x-appgw-trace-id&quot; value into GUID format.</p>
+<pre class="language-text"><code class="language-text">node guidformater.js fbb1e0f840243e440e74de29ea5581bc</code></pre>
+<p>Get application gateway log record by transaction id.</p>
+<pre class="language-text"><code class="language-text">az monitor log-analytics query -w $law --analytics-query 'AzureDiagnostics | where transactionId_g=="fbb1e0f8-4024-3e44-0e74-de29ea5581bc"'</code></pre>
+<p>NOTE:<br>
+If you do not know the transaction ID you can query the log record by url query parameter and client ip.</p>
+<pre class="language-text"><code class="language-text">az monitor log-analytics query -w $law --analytics-query 'AzureDiagnostics | where ResourceId contains "APPLICATIONGATEWAY" | where clientIP_s == "10.0.2.4" | where requestQuery_s == "cpt=evil2"' --query [].transactionId_g</code></pre>
+<p>Get web application firewall log record by transaction Id.</p>
+<pre class="language-text"><code class="language-text">az monitor log-analytics query -w $law --analytics-query 'AzureDiagnostics | where transactionId_g =="96fd8d5a-998a-1b92-de37-e6be90e8673e"' --query '[].{}</code></pre>
+<p>Get web application firewall log record by url</p>
+<pre class="language-text"><code class="language-text">az monitor log-analytics query -w $law --analytics-query 'AzureDiagnostics <br>| where ResourceProvider == "MICROSOFT.NETWORK" and Category == "ApplicationGatewayFirewallLog" | where clientIp_s == "10.0.2.4" | where requestUri_s == "/cptdagw/test.txt?cpt=evil2"'</code></pre>
+
+<hr>
+<ul><li>Next: <a href="/posts/cptdfw-lb/">Azure Firewall, Loadbalancer and NAT</a></li><li>Previous: <a href="/posts/cptdagw-storage/">Azure Application Gateway and Azure Storages</a></li>
+</ul>
+
+    </main>
+
+    <footer></footer>
+    <!-- Current page: /posts/cptdagw-waf/ -->
+  </body>
+</html>

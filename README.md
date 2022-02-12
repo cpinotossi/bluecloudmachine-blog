@@ -64,6 +64,10 @@ Git commands.
 ~~~ text
 git status
 git remote get-url --all origin
+git branch --all
+git diff master remotes/origin/master
+git fetch origin master
+git merge origin/master
 ~~~
 
 

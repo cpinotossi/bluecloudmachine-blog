@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Azure Function triggered by Azure Alert</title>
+    <meta name="description" content="This is a post about how to trigger an Azure Function via an Azure Alert">
+    <link rel="stylesheet" href="/css/index.css">
+  </head>
+  <body>
+    <header>
+      <h1 class="home"><a href="/">bluecloudmachine.org</a></h1>
+      <ul class="nav">
+        <li class="nav-item"><a href="/">Home</a></li>
+        <li class="nav-item"><a href="/about/">About Me</a></li>
+        <li class="nav-item"><a href="/posts/">Archive</a></li>
+      </ul>
+    </header>
+
+    <main class="tmpl-post">
+      <h1>Azure Function triggered by Azure Alert</h1>
+
+<time datetime="2021-03-21">21 Mar 2021</time>
+
+<p><img src="/img/cptdfun-alert/overview.01.png" alt="Use Case" title="Use Case"></p>
+<p>We like to restrict access to the Azure Function App [funalert-func] only to the Azure Container Instances [funalert-aci].</p>
+<ul>
+<li>We run an Azure Container Instances Service called &quot;funalert-aci&quot;.</li>
+<li>Whenever the Azure Container Instances &quot;funalert-aci&quot; goes down and does restart successfully we like to tigger an Azure Alert.</li>
+<li>The Azure Alert does trigger an Azure Function App called &quot;funalert-func&quot;.</li>
+<li>The Azure Function App &quot;funalert-func&quot; does something else which is not relavent here.</li>
+</ul>
+<p>We will need to create the following three components inside Azure:</p>
+<ul>
+<li>Azure Container Instances</li>
+<li><img src="/img/cptdfun-alert/aci.png" alt="Azure Container Instances" title="Azure Container Instances"></li>
+<li>Azure Function App</li>
+<li><img src="/img/cptdfun-alert/afa.png" alt="Azure Function App" title="Azure Function App"></li>
+<li>Azure Alert</li>
+<li><img src="/img/cptdfun-alert/alert.png" alt="Azure Alert" title="Azure Alert"></li>
+</ul>
+<h2 id="azure-function-app-authorization-and-authentication" tabindex="-1">Azure Function App Authorization &amp; Authentication <a class="direct-link" href="#azure-function-app-authorization-and-authentication" aria-hidden="true">#</a></h2>
+<p>IMPORTANT: During the next steps you will need to register an App under your current Azure AD. Therefore your Azure account needs permissions to register AAD apps.<br>
+In case you do not have the needed permission, request the tenant/global admin to assign the required permission. Alternately, the tenant/global admin can assign the Application Developer role to an account to allow the registration of AAD App. <a href="https://docs.microsoft.com/en-us/azure/active-directory/fundamentals/active-directory-users-assign-role-azure-portal">Learn more</a>.</p>
+<p>To restrict access to our Azure Function App &quot;funalert-func&quot; we will use the concept of an Identity Provider, in our case we will make use of Azure Active Directory [AAD].</p>
+<p>In a first step we need to create a representation of our Azure Function App &quot;funalert-func&quot; inside the AAD. This is done via a so called &quot;Application Registration&quot; inside the AAD.</p>
+<p>Registering an application with Azure AD allows you to leverage the Microsoft identity platform’s secure sign-in and authorization features for use with that application.</p>
+<p>This will allow us to control who should have access to our Azure Function App &quot;funalert-func&quot;.</p>
+<p>The &quot;Application Registration&quot; process will create the following two object in your Azure Active Directory tenant:</p>
+<h3 id="an-application-object" tabindex="-1">An application object <a class="direct-link" href="#an-application-object" aria-hidden="true">#</a></h3>
+<p>Application objects are stored within the Azure AD instance and define the application. The schema for an application object’s properties is defined by the Microsoft Graph application entity resource type. Application objects are a global representation of an application across all Azure AD tenancies. The application object functions as a template from which common and default properties are determined when Azure AD creates the corresponding service principal object. Application objects have a one-to-one relationship with the software application and a one-to-many relationship with corresponding service principal objects.</p>
+<h3 id="service-principal-object" tabindex="-1">service principal object <a class="direct-link" href="#service-principal-object" aria-hidden="true">#</a></h3>
+<p>A user principal in Azure AD is an object that represents a user. A service principal is an Azure AD object that represents an application. The ServicePrincipal object allows you to specify the access policy and permissions for the application and the user of that application within your organization’s Azure AD tenant. A service principal is required for each tenancy where the application is used. A single-tenant application will only have one service principal, and a multitenant application will have a service principal for each tenancy where a user from that tenancy has consented to the application’s use. The Microsoft Graph service principal entity defines the schema used for a ServicePrincipal object’s properties. The service principal is the representation of the application in a specific Azure AD tenancy.</p>
+<p>More Info Application and Service Principal Objects<br>
+You can learn more about application and service principal objects at <a href="https://docs.microsoft.com/en-us/azure/active-directory/develop/app-objects-and-service-principals">https://docs.microsoft.com/en-us/azure/active-directory/develop/app-objects-and-service-principals</a>.</p>
+<p>Service principals are analogous to an on-premises Active Directory service account in that both allow an application to have an identity and security context.</p>
+<p>To create an &quot;Application Registration&quot; for our Azure Function App &quot;funalert-func&quot; we will use the Azure Function &quot;Authorization and Authentication&quot; setting:</p>
+<ul>
+<li>Go to the Azure Function App overview page.</li>
+<li>Select &quot;Authentication / Authorization&quot;.</li>
+<li>Turn on &quot;App Service Authentication&quot;.</li>
+<li>Make sure to select &quot;Log in with Azure Active Directory&quot; at &quot;Action to take when request is not authenticated&quot;.</li>
+<li>Select &quot;Azure Active Directory&quot; from &quot;Authentication Provider&quot;.</li>
+</ul>
+<p><img src="/img/cptdfun-alert/afa.auth.01.png" alt="Overview" title="Overview"></p>
+<p>Inside the &quot;Authentication Provider&quot; dialog:</p>
+<ul>
+<li>Select &quot;Express&quot;.</li>
+<li>Let the wizard create an &quot;Azure AD App&quot; or select an existing Azure AD App.</li>
+<li>Select &quot;OK&quot; to confirm your settings.</li>
+</ul>
+<p><img src="/img/cptdfun-alert/afa.auth.02.png" alt="Overview" title="Overview"></p>
+<p>Back on the initial &quot;Authentication / Authorizaton&quot; Screen confirm your settings by clicking on &quot;Save&quot;:</p>
+<p><img src="/img/cptdfun-alert/afa.auth.03.png" alt="Overview" title="Overview"></p>
+<h3 id="&quot;aad-app&quot;-and-aad" tabindex="-1">&quot;AAD App&quot; &amp; AAD <a class="direct-link" href="#&quot;aad-app&quot;-and-aad" aria-hidden="true">#</a></h3>
+<p>Next we need to verify if all the &quot;Azure AD App&quot; setting of the last step have been applied.</p>
+<p>NOTE: In case you do not have the needed Azure AD Permission the Express Setup of the &quot;Azure AD App&quot; will only successed partly.<br>
+To verify this we need to find the corresponding &quot;Azure AD App&quot; inside the AAD:</p>
+<ul>
+<li>Go into the Azure Active Directy View and select &quot;App registration&quot;.</li>
+<li>Here you will find your &quot;AAD App&quot;, in our case it has been named &quot;funalert-func-app&quot;. Click on it to call the detail view of our &quot;AAD App&quot; funalert-func-app:</li>
+</ul>
+<p><img src="/img/cptdfun-alert/afa.auth.05.png" alt="Overview" title="Overview"></p>
+<p>Inside the Detail view of our &quot;AAD App&quot; we will also be able to see the &quot;Object Id&quot; of &quot;funalert-func-app&quot; which is unique inside the AAD Tenant:</p>
+<p><img src="/img/cptdfun-alert/afa.auth.06.png" alt="Overview" title="Overview"></p>
+<p>Inside the Detail view of our &quot;AAD App&quot; we need to verify that an &quot;Redirect URI&quot; has been created under the &quot;Authentication&quot; Section:</p>
+<p><img src="/img/cptdfun-alert/afa.auth.06.01.png" alt="Overview" title="Overview"></p>
+<p>Inside the Detail view of our &quot;AAD App&quot; we need to verify that a &quot;Client Secret&quot; has been created under the &quot;Certificates &amp; Secret&quot; Section:</p>
+<p><img src="/img/cptdfun-alert/afa.auth.06.02.png" alt="Overview" title="Overview"></p>
+<p>If any of both setting does not exist you did not have the needed permission to create the &quot;AAD App&quot; the right way. You will need to request the tenant/global admin to assign the required permission. Alternately, the tenant/global admin can assign the Application Developer role to an account to allow the registration of AAD App. <a href="https://docs.microsoft.com/en-us/azure/active-directory/fundamentals/active-directory-users-assign-role-azure-portal">Learn more</a>.</p>
+<h3 id="support-app-role-based-access" tabindex="-1">Support App Role based access <a class="direct-link" href="#support-app-role-based-access" aria-hidden="true">#</a></h3>
+<p>Inside &quot;AAD App&quot; &quot;funalert-func-app&quot; we can use the concept of an &quot;App Role&quot;. &quot;App Role&quot; is something we can assign other &quot;AAD Identities&quot; like User, Group, Service Principal, Managed Identity, Enterprise Applications. In our case we like to assign this to our Azure Container Instance. But first we need to define the &quot;App Role&quot; inside our &quot;AAD App&quot;:</p>
+<ul>
+<li>Select the &quot;App Role&quot; from the left hand menue bar inside the &quot;ADD App&quot; view of &quot;funalert-func-app&quot;.</li>
+<li>Select &quot;Create app role&quot;</li>
+</ul>
+<p><img src="/img/cptdfun-alert/afa.auth.07.png" alt="Overview" title="Overview"></p>
+<ul>
+<li>Inside the new Dialog define a name for your App Role (&quot;funalert-func-sp-approle&quot;).</li>
+<li>Select which type of AAD member should be able to get assigned this role (AAD Groups, Applications (= ADD App, Service Principal, Managed Identitys)).</li>
+<li>Value, in our case it will not be relevant, so you are free to add whatever you like.</li>
+<li>Give it a nice description.</li>
+<li>Check the box to enable the &quot;App Role&quot;.</li>
+<li>Confirm by clicking the &quot;apply&quot; button.</li>
+</ul>
+<p><img src="/img/cptdfun-alert/afa.auth.08.png" alt="Overview" title="Overview"></p>
+<p>We will need the &quot;Id&quot; or our new created &quot;App Role&quot;:</p>
+<ul>
+<li>Select &quot;Manifest&quot; from the left hand menue bar.</li>
+<li>Find the &quot;id&quot; of our new &quot;App Role&quot; (Id =&quot;ce2&quot;) inside the JSON file.</li>
+</ul>
+<p><img src="/img/cptdfun-alert/afa.auth.09.png" alt="Overview" title="Overview"></p>
+<p><a href="https://docs.microsoft.com/en-us/azure/active-directory/develop/scenario-protected-web-api-app-registration#if-your-web-api-is-called-by-a-daemon-app">https://docs.microsoft.com/en-us/azure/active-directory/develop/scenario-protected-web-api-app-registration#if-your-web-api-is-called-by-a-daemon-app</a></p>
+<h3 id="aad-enterprise-application" tabindex="-1">AAD Enterprise Application <a class="direct-link" href="#aad-enterprise-application" aria-hidden="true">#</a></h3>
+<p>&quot;AAD App&quot; (aka App Registration) does not represent an Service Principal inside an AAD. But to be able to define Access rights we will need to represent our Azure Function App as an Service Principal inside our AAD.<br>
+Therefore, during the creation of the &quot;AAD App&quot; &quot;funalert-func-app&quot;, AAD created an &quot;Service Principal&quot; of the type &quot;Enterprise Application&quot; with a seperate &quot;Object Id&quot; in parallel. In the next step we need to retrieve the corresponding Object Id of the &quot;Enterprise Application&quot; Service Principal:</p>
+<ul>
+<li>Select &quot;Enterprise Application&quot; from the AAD Menue:</li>
+</ul>
+<p><img src="/img/cptdfun-alert/afa.auth.10.png" alt="Overview" title="Overview"></p>
+<ul>
+<li>Make sure you select &quot;All Application&quot; in the &quot;Application Type&quot; search filter.</li>
+<li>Press the &quot;Apply&quot; button.</li>
+<li>Type the name of the &quot;AAD App&quot; into the text field. In our case &quot;funalert-func-app&quot;.</li>
+<li>Copy the Object Id of the &quot;Enterprise Application&quot; (&quot;51c&quot;).</li>
+</ul>
+<p>IMPORTANT<br>
+: The &quot;Enterprise Applciation&quot; Object Id (&quot;51c&quot;) is different to the &quot;AAD App&quot; Object Id (&quot;f38&quot;) even if both use the same name &quot;funalert-func-app&quot;.</p>
+<p><img src="/img/cptdfun-alert/afa.auth.11.png" alt="Overview" title="Overview"></p>
+<p>Status of our setup:</p>
+<ul>
+<li>&quot;App Role&quot; &quot;funalert-func-sp-approle&quot; (Id &quot;ce2&quot;),</li>
+<li>&quot;Enterprise Application&quot; &quot;funalert-func-app&quot; (Object Id &quot;51c&quot;)</li>
+</ul>
+<p><img src="/img/cptdfun-alert/afa.auth.12.png" alt="Overview" title="Overview"></p>
+<h2 id="azure-container-instance-managed-identity" tabindex="-1">Azure Container Instance Managed Identity <a class="direct-link" href="#azure-container-instance-managed-identity" aria-hidden="true">#</a></h2>
+<p>The Azure Container Instances [ACI] &quot;funalert-aci&quot; needs also to become visible to our AAD via an &quot;Managed Identity&quot;.</p>
+<ul>
+<li>Select &quot;Identity&quot; from inside the ACI &quot;funalert-aci&quot; view.</li>
+<li>Select &quot;On&quot; from Status.</li>
+<li>Click &quot;Save&quot;, afterwards you will see the Object Id (&quot;4f9..&quot;). We will need this later on.</li>
+</ul>
+<p><img src="/img/cptdfun-alert/aci.auth.01.png" alt="Overview" title="Overview"></p>
+<p>Out of all the objects we generated so far this are the once which will become relevant for the next step:</p>
+<ul>
+<li>Azure Container &quot;Managed Id&quot; (Object Id = &quot;4f9..&quot;)</li>
+<li>AAD App &quot;App Role&quot; (Id = &quot;ce2..&quot;)</li>
+<li>AAD Enterprise Application (Object Id = &quot;51c&quot;)</li>
+</ul>
+<p><img src="/img/cptdfun-alert/overview.02.png" alt="Overview" title="Overview"></p>
+<h2 id="assignment" tabindex="-1">Assignment <a class="direct-link" href="#assignment" aria-hidden="true">#</a></h2>
+<p>We need to assign the &quot;App Role&quot; (&quot;ce2..&quot;) to our ACI &quot;Managed Id&quot; (&quot;4f9..&quot;). Use the powershell cmdlt &quot;New-AzureADServiceAppRoleAssignment&quot; which is part of the &quot;AzureAD&quot; module.</p>
+<p>NOTE<br>
+: Follow this instruction to install AzureAD module: <a href="https://docs.microsoft.com/en-us/powershell/azure/authenticate-azureps?view=azps-5.1.0">https://docs.microsoft.com/en-us/powershell/azure/authenticate-azureps?view=azps-5.1.0</a></p>
+<p>Powershell command:</p>
+<pre class="language-text"><code class="language-text">New-AzureADServiceAppRoleAssignment -ObjectId <ACI Managed Id> -PrincipalId <ACI Managed Id> -Id <App Role> -ResourceId <Enterprise Application></code></pre>
+<p>Adding corresponding &quot;Object Id`s&quot; and &quot;Id&quot;:</p>
+<pre class="language-text"><code class="language-text">New-AzureADServiceAppRoleAssignment -ObjectId 4f9.. -PrincipalId 4f9.. -Id ce2.. -ResourceId 51c..</code></pre>
+<p>The output will be a new AAD &quot;Assignment&quot; Object with a new Object Id (&quot;gvS&quot;):</p>
+<pre class="language-text"><code class="language-text">ObjectId  ResourceDisplayName  PrincipalDisplayName<br>--------  -------------------  --------------------<br>gvST..    funalert-func-app    funalert-aci</code></pre>
+<p>In case we like to verify that our Azure Container Instance Managed Id has been assigned to the AAD App &quot;App Role&quot; we can verify this inside the AAD as follow:</p>
+<ul>
+<li>Select &quot;All Application&quot; in the &quot;Application Type&quot; search filter.</li>
+<li>Press &quot;Apply&quot; button.</li>
+<li>Type the name of your Azure Container Instance &quot;Managed Id&quot; into the text field. The Name is equal to the name of your ACI, in our case &quot;funalert-aci&quot;.</li>
+<li>Verify the &quot;Object Id&quot; does match with yours (&quot;4f9..&quot;).</li>
+<li>Click on the entry.</li>
+</ul>
+<p><img src="/img/cptdfun-alert/overview.03.png" alt="Overview" title="Overview"></p>
+<ul>
+<li>Select &quot;Permission&quot;.</li>
+<li>Click on the &quot;Permission&quot; entry &quot;funalert-func-app&quot;.</li>
+<li>&quot;Service Principle&quot; does refer to the &quot;Enterprise Application&quot; &quot;Object Id&quot; (&quot;51c&quot;).</li>
+<li>&quot;Perminsion display name&quot; does refer to the &quot;App Role&quot; &quot;funalert-func-sp-approle&quot; (&quot;ce2..&quot;).</li>
+</ul>
+<p><img src="/img/cptdfun-alert/overview.04.png" alt="Overview" title="Overview"></p>
+<h2 id="setup-alert" tabindex="-1">Setup Alert <a class="direct-link" href="#setup-alert" aria-hidden="true">#</a></h2>
+<p>I will not go into detail how to setup an Azure alert but I will highlight the two important settings:</p>
+<ul>
+<li>Alert Signal logic</li>
+<li>Alert Action</li>
+</ul>
+<h3 id="alert-signal-logic" tabindex="-1">Alert Signal logic <a class="direct-link" href="#alert-signal-logic" aria-hidden="true">#</a></h3>
+<p>In our case we would like to receive an alert whenever the Azure Container Instance has been restarted successfully.</p>
+<ul>
+<li>Selected Status &quot;Succeeded&quot;.</li>
+<li>Click &quot;Done&quot;.</li>
+</ul>
+<p><img src="/img/cptdfun-alert/alert.setup.04.png" alt="Overview" title="Overview"></p>
+<h3 id="alert-action-setup" tabindex="-1">Alert Action Setup <a class="direct-link" href="#alert-action-setup" aria-hidden="true">#</a></h3>
+<p>Use &quot;Action Type&quot; &quot;Secure Webhook&quot;, it does support AAD:</p>
+<ul>
+<li>Select the Azure Function App &quot;AAD App&quot; (Object Id = &quot;f38..&quot;).</li>
+<li>Enter the Azure Function App URL you like to call. In our case we use ´https://funalert-func.azurewebsites.net/api/httptrigger?name=huhu´.</li>
+</ul>
+<p><img src="/img/cptdfun-alert/alert.setup.08.png" alt="Overview" title="Overview"></p>
+<p>IMPORTANT<br>
+: Query Parameter &quot;name=huhu&quot; has been added to indentify the Webhook Request from Azure Alert.</p>
+<h2 id="test-(showtime)" tabindex="-1">Test (Showtime) <a class="direct-link" href="#test-(showtime)" aria-hidden="true">#</a></h2>
+<h3 id="test-on-my-local-machine" tabindex="-1">Test on my local Machine <a class="direct-link" href="#test-on-my-local-machine" aria-hidden="true">#</a></h3>
+<p>We expect to receive an HTTP Response Code 200 OK:</p>
+<pre class="language-text"><code class="language-text">$ curl "http://localhost:7071/api/HttpTrigger?name=christian" -v<br>*   Trying 127.0.0.1...<br>* TCP_NODELAY set<br>* Connected to localhost (127.0.0.1) port 7071 (#0)<br>> GET /api/HttpTrigger?name=christian HTTP/1.1<br>> Host: localhost:7071<br>> User-Agent: curl/7.58.0<br>> Accept: */*<br>><br>< HTTP/1.1 200 OK<br>< Date: Fri, 19 Mar 2021 19:02:15 GMT<br>< Content-Type: text/plain; charset=utf-8<br>< Server: Kestrel<br>< Transfer-Encoding: chunked<br>< Request-Context: appId=<br><<br>{<br>    "method": "GET",<br>    "url": "http://localhost:7071/api/HttpTrigger?name=christian",<br>    "originalUrl": "http://localhost:7071/api/HttpTrigger?name=christian",<br>    "headers": {<br>        "accept": "*/*",<br>        "host": "localhost:7071",<br>        "user-agent": "curl/7.58.0"<br>    },<br>    "query": {<br>        "name": "christian"<br>    },<br>    "params": {}</code></pre>
+<p>Corresponding local Azure Function App logs:</p>
+<pre class="language-text"><code class="language-text">2021-03-19T19:01:52.292Z] Worker process started and initialized.<br>[2021-03-19T19:02:16.081Z] Executing 'Functions.HttpTrigger' (Reason='This function was programmatically called via the host APIs.', Id=fc52a922)<br>[2021-03-19T19:02:16.129Z] {<br>[2021-03-19T19:02:16.133Z]     "method": "GET",<br>[2021-03-19T19:02:16.135Z]     "url": "http://localhost:7071/api/HttpTrigger?name=christian",<br>[2021-03-19T19:02:16.137Z] JavaScript HTTP trigger function processed a request.<br>[2021-03-19T19:02:16.138Z]     "originalUrl": "http://localhost:7071/api/HttpTrigger?name=christian",<br>[2021-03-19T19:02:16.143Z]     "headers": {<br>[2021-03-19T19:02:16.144Z]         "accept": "*/*",<br>[2021-03-19T19:02:16.146Z]         "host": "localhost:7071",<br>[2021-03-19T19:02:16.148Z]         "user-agent": "curl/7.58.0"<br>[2021-03-19T19:02:16.150Z]     },<br>[2021-03-19T19:02:16.152Z]     "query": {<br>[2021-03-19T19:02:16.154Z]         "name": "christian"<br>[2021-03-19T19:02:16.156Z]     },<br>[2021-03-19T19:02:16.158Z]     "params": {}<br>[2021-03-19T19:02:16.160Z] }<br>[2021-03-19T19:02:16.213Z] Executed 'Functions.HttpTrigger' (Succeeded, Id=fc52a922-, Duration=165ms)</code></pre>
+<h3 id="request-direct-against-azure-function-app" tabindex="-1">Request direct against Azure Function App <a class="direct-link" href="#request-direct-against-azure-function-app" aria-hidden="true">#</a></h3>
+<p>We expect to receive an 401 Unauthorized response code:</p>
+<pre class="language-text"><code class="language-text">$ curl "https://funalert-func.azurewebsites.net/api/httptrigger" -v<br>> GET /api/httptrigger HTTP/1.1<br>> Host: funalert-func.azurewebsites.net<br>> User-Agent: curl/7.58.0<br>> Accept: */*<br>><br>< HTTP/1.1 401 Unauthorized<br>< Content-Length: 58<br>< Content-Type: text/html<br>< WWW-Authenticate: Bearer realm="funalert-func.azurewebsites.net" authorization_uri="https://login.windows.net/my-sts/oauth2/authorize" resource_id="bab9d3b0-16ae-450b-aa4a-f2fdba022a56"<br>< Date: Fri, 19 Mar 2021 14:49:35 GMT<br><</code></pre>
+<h3 id="restart-azure-container-instance-to-trigger-alert" tabindex="-1">Restart Azure Container instance to trigger alert <a class="direct-link" href="#restart-azure-container-instance-to-trigger-alert" aria-hidden="true">#</a></h3>
+<pre class="language-text"><code class="language-text">PS C:\> func azure functionapp publish funalert-func</code></pre>
+<p>Retrieve logs via Azure ApplicationInsight which has been setup togther with the Azure Function App.</p>
+<p>The Kusto query does look for the Query Parameter &quot;name=huhu&quot;:</p>
+<pre class="language-text"><code class="language-text">traces<br>| where timestamp > ago(30m) and message == "\"url\": \"https://funalert-func.azurewebsites.net/api/httptrigger?name=huhu\","</code></pre>
+<p><img src="/img/cptdfun-alert/test.01.png" alt="Overview" title="Overview"></p>
+<p>You can also make use of the Azure CLI to get the logs:</p>
+<pre class="language-text"><code class="language-text">az monitor app-insights query --apps funalert-func -g funalert-rg --analytics-query 'traces | where timestamp > ago(10m) and message has \"huhu\"'</code></pre>
+<h3 id="get-logs-via-the-azure-function-cli" tabindex="-1">Get Logs via the Azure Function CLI <a class="direct-link" href="#get-logs-via-the-azure-function-cli" aria-hidden="true">#</a></h3>
+<p>Before you can retrive logs you will need to make sure that the logging is setup with &quot;&quot;fileLoggingMode&quot;: &quot;always&quot; inside the host.json.</p>
+<p>NOTE: This should be done before you restart the ACI.</p>
+<pre class="language-text"><code class="language-text">{<br>  "version": "2.0",<br>  "logging": {<br>    "fileLoggingMode": "always",<br>    "applicationInsights": {<br>      "samplingSettings": {<br>        "isEnabled": true,<br>        "excludedTypes": "Request"<br>      }<br>    }<br>  },<br>  "extensionBundle": {<br>    "id": "Microsoft.Azure.Functions.ExtensionBundle",<br>    "version": "[1.*, 2.0.0)"<br>  }<br>}<br></code></pre>
+<p>Afterwards you can start to connect to the logstream as follow:</p>
+<pre class="language-text"><code class="language-text">PS :\> func azure functionapp logstream funalert-func</code></pre>
+<p>Output should look as follow:</p>
+<pre class="language-text"><code class="language-text">PS :\> func azure functionapp logstream funalert-func<br>2021-03-26T12:07:01.491 [Information] "caller": "ga@myedge.org",<br>2021-03-26T12:07:01.492 [Information] "correlationId": "c9547a1c-846d-4cd9-b5bc-4009dfe9c4f1",<br>2021-03-26T12:07:01.492 [Information] "description": "",<br>2021-03-26T12:07:01.492 [Information] "eventSource": "Administrative",<br>2021-03-26T12:07:01.492 [Information] "eventTimestamp": "2021-03-26T12:05:22.0029288+00:00",<br>2021-03-26T12:07:01.492 [Information] "httpRequest": "{\"clientRequestId\":\"88996428-8e2b-11eb-bca6-9de033d37913\",\"clientIpAddress\":\"93.230.221.88\",\"method\":\"POST\"}",<br>2021-03-26T12:07:01.492 [Information] "eventDataId": "58281b51-cc22-4f16-b93d-3b6a3b4863c7",<br>2021-03-26T12:07:01.492 [Information] "level": "Informational",<br>2021-03-26T12:07:01.492 [Information] "operationName": "Microsoft.ContainerInstance/containerGroups/restart/action",<br>2021-03-26T12:07:01.492 [Information] "operationId": "c9547a1c-846d-4cd9-b5bc-4009dfe9c4f1",<br>2021-03-26T12:07:01.492 [Information] "properties": {<br>2021-03-26T12:07:01.492 [Information] "eventCategory": "Administrative",<br>2021-03-26T12:07:01.492 [Information] "entity": "/subscriptions/my-subscription/resourceGroups/funalert-rg/providers/Microsoft.ContainerInstance/containerGroups/funalert-aci",<br>2021-03-26T12:07:01.492 [Information] "message": "Microsoft.ContainerInstance/containerGroups/restart/action",<br>2021-03-26T12:07:01.493 [Information] "hierarchy": "my-sts/my-subscription"<br>2021-03-26T12:07:01.493 [Information] },<br>2021-03-26T12:07:01.493 [Information] "resourceId": "/subscriptions/my-subscription/resourceGroups/funalert-rg/providers/Microsoft.ContainerInstance/containerGroups/funalert-aci",<br>2021-03-26T12:07:01.493 [Information] "resourceGroupName": "funalert-rg",<br>2021-03-26T12:07:01.493 [Information] "resourceProviderName": "Microsoft.ContainerInstance",<br>2021-03-26T12:07:01.493 [Information] "status": "Started",<br>2021-03-26T12:07:01.493 [Information] "subStatus": "",<br>2021-03-26T12:07:01.493 [Information] "subscriptionId": "my-subscription",<br>2021-03-26T12:07:01.493 [Information] "submissionTimestamp": "2021-03-26T12:06:50.1473765+00:00",<br>2021-03-26T12:07:01.493 [Information] "resourceType": "Microsoft.ContainerInstance/containerGroups"<br>2021-03-26T12:07:01.493 [Information] }<br>2021-03-26T12:07:01.493 [Information] },<br>2021-03-26T12:07:01.493 [Information] "properties": {}<br>2021-03-26T12:07:01.494 [Information] }<br>2021-03-26T12:07:01.494 [Information] },</code></pre>
+<h2 id="thanks" tabindex="-1">Thanks <a class="direct-link" href="#thanks" aria-hidden="true">#</a></h2>
+<p>This Blog is based on another one written by John Friesen:</p>
+<p><a href="https://dev.to/superjohn140/azure-alerts-secure-webhook-azure-functions-with-authentication-364">https://dev.to/superjohn140/azure-alerts-secure-webhook-azure-functions-with-authentication-364</a></p>
+<h2 id="usefull-links" tabindex="-1">Usefull links <a class="direct-link" href="#usefull-links" aria-hidden="true">#</a></h2>
+<p>Automation with powershell:</p>
+<p><a href="https://docs.microsoft.com/en-us/azure/azure-monitor/alerts/action-groups#secure-webhook-powershell-script">https://docs.microsoft.com/en-us/azure/azure-monitor/alerts/action-groups#secure-webhook-powershell-script</a></p>
+
+<hr>
+<ul><li>Next: <a href="/posts/cptdagw-storage/">Azure Application Gateway and Azure Storages</a></li>
+</ul>
+
+    </main>
+
+    <footer></footer>
+    <!-- Current page: /posts/cptdfun-alert/ -->
+  </body>
+</html>

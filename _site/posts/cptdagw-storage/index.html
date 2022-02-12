@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Azure Application Gateway and Azure Storages</title>
+    <meta name="description" content="How to shared over multiple azure storage accounts.">
+    <link rel="stylesheet" href="/css/index.css">
+  </head>
+  <body>
+    <header>
+      <h1 class="home"><a href="/">bluecloudmachine.org</a></h1>
+      <ul class="nav">
+        <li class="nav-item"><a href="/">Home</a></li>
+        <li class="nav-item"><a href="/about/">About Me</a></li>
+        <li class="nav-item"><a href="/posts/">Archive</a></li>
+      </ul>
+    </header>
+
+    <main class="tmpl-post">
+      <h1>Azure Application Gateway and Azure Storages</h1>
+
+<time datetime="2021-05-15">15 May 2021</time>
+
+<div><a href="/img/cptdagw-storage/azss.002.png"><picture> <source type="image/webp" srcset=" /img/cptdagw-storage/dCxKNSBFRx-320.webp 320w , /img/cptdagw-storage/dCxKNSBFRx-640.webp 640w , /img/cptdagw-storage/dCxKNSBFRx-960.webp 960w ," > <img
+      loading="lazy"
+      alt="Overview of deployment"
+      src="/img/cptdagw-storage/dCxKNSBFRx-320.jpeg"
+      sizes="(max-width: 320px) 320px, (min-width: 640px) 640px, (min-width: 960px) 960px, 100vw"
+      srcset=" /img/cptdagw-storage/dCxKNSBFRx-320.jpeg 320w , /img/cptdagw-storage/dCxKNSBFRx-640.jpeg 640w , /img/cptdagw-storage/dCxKNSBFRx-960.jpeg 960w ,"> </picture></a></div>
+<p><a href="/img/cptdagw-storage/azss.002.png">Overview of deployment</a></p>
+<h2 id="azure-storage-limits:" tabindex="-1">Azure Storage Limits: <a class="direct-link" href="#azure-storage-limits:" aria-hidden="true">#</a></h2>
+<hr>
+<p>Azure Storage Account have limits on Bandwidth and IOPS:</p>
+<table>
+<thead>
+<tr>
+<th>Resource</th>
+<th>Limit</th>
+<th>Type</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Number of storage accounts per region per subscription, including standard, and premium storage accounts.</td>
+<td>250</td>
+<td>-</td>
+</tr>
+<tr>
+<td>Maximum storage account capacity</td>
+<td>5 PiB</td>
+<td>soft</td>
+</tr>
+<tr>
+<td>Maximum number of blob containers, blobs, file shares, tables, queues, entities, or messages per storage account</td>
+<td>No limit</td>
+<td>-</td>
+</tr>
+<tr>
+<td>Maximum request rate per storage account</td>
+<td>20,000 requests per second</td>
+<td>soft</td>
+</tr>
+<tr>
+<td>Maximum ingress per storage account (US, Europe regions)</td>
+<td>10 Gbps</td>
+<td>-</td>
+</tr>
+<tr>
+<td>Maximum ingress per storage account (regions other than US and Europe)</td>
+<td>5 Gbps if RA-GRS/GRS is enabled, 10 Gbps for LRS/ZRS2</td>
+<td>-</td>
+</tr>
+<tr>
+<td>Maximum egress for general-purpose v2 and Blob storage accounts (all regions)</td>
+<td>50 Gbps</td>
+<td>-</td>
+</tr>
+<tr>
+<td>Maximum number of virtual network rules per storage account</td>
+<td>200</td>
+<td>-</td>
+</tr>
+<tr>
+<td>Maximum number of IP address rules per storage account</td>
+<td>200</td>
+<td>-</td>
+</tr>
+<tr>
+<td>Target request rate for a single blob</td>
+<td>Up to 500 requests per second</td>
+<td>hard</td>
+</tr>
+<tr>
+<td>Target throughput for a single page blob</td>
+<td>Up to 60 MiB per second</td>
+<td>-</td>
+</tr>
+<tr>
+<td>Target throughput for a single block blob</td>
+<td>Up to storage account ingress/egress limits</td>
+<td>-</td>
+</tr>
+</tbody>
+</table>
+<p>Source:</p>
+<ul>
+<li><a href="https://docs.microsoft.com/en-us/azure/azure-resource-manager/management/azure-subscription-service-limits#storage-limits">Storage limits</a></li>
+<li><a href="https://docs.microsoft.com/en-us/azure/azure-resource-manager/management/azure-subscription-service-limits#azure-blob-storage-limits">Azure Blob storage limits</a></li>
+</ul>
+<p>Storage limits:<br>
+When certain metrics like Maximum request rate per storage account is exceeded the following throttling behaviour takes place;</p>
+<table>
+<thead>
+<tr>
+<th>Error code</th>
+<th>HTTP status code</th>
+<th>User message</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ServerBusy</td>
+<td>Service Unavailable (503)</td>
+<td>The server is currently unable to receive requests. Please retry your request.</td>
+</tr>
+<tr>
+<td>ServerBusy</td>
+<td>Service Unavailable (503)</td>
+<td>Ingress is over the account limit.</td>
+</tr>
+<tr>
+<td>ServerBusy</td>
+<td>Service Unavailable (503)</td>
+<td>Egress is over the account limit.</td>
+</tr>
+<tr>
+<td>ServerBusy</td>
+<td>Service Unavailable (503)</td>
+<td>Operations per second is over the account limit.</td>
+</tr>
+</tbody>
+</table>
+<p>source: <a href="https://docs.microsoft.com/en-us/rest/api/storageservices/common-rest-api-error-codes">Storage Rest API Error Codes</a></p>
+<h3 id="summary" tabindex="-1">Summary <a class="direct-link" href="#summary" aria-hidden="true">#</a></h3>
+<hr>
+<ul>
+<li>We can serve 500 req/sec in paralle for a single Blob.</li>
+<li>We can serve 20000 req/sec via a single Storage Account.</li>
+<li>We can serve a max of 60 Mbps for a single Blob Storage.</li>
+<li>We can serve 10000 Mbps via a single Storage Account.</li>
+</ul>
+<h2 id="serve-a-single-blob-with-+500-reqsec" tabindex="-1">Serve a single blob with +500 req/sec <a class="direct-link" href="#serve-a-single-blob-with-+500-reqsec" aria-hidden="true">#</a></h2>
+<hr>
+<p>In case we like to serve a single blob with +500 req/sec we will need to use multiple storage accounts.</p>
+<p>To loadbalance between the Storage Accounts we are going to use Application Gateway:<br>
+<img src="/img/cptdagw-storage/azss.001.png" alt="Overview"></p>
+<h2 id="create-azure-key-vault" tabindex="-1">Create Azure Key Vault <a class="direct-link" href="#create-azure-key-vault" aria-hidden="true">#</a></h2>
+<hr>
+<p>Request will be served via https.<br>
+The corresponding server certificate will be created and stored inside Azure Key Vault.</p>
+<p>Update parameter file <a href="./deploy.parameters.json">parameters.json</a>.</p>
+<ul>
+<li>prefix: Use a unique string. The prefix will be used in front of each azure resources but also become part of the blob storage account FQDN.</li>
+<li>regionPairA: Location, Azure Region (e.g. westeurope}.</li>
+<li>userAdminObjectId: GUID (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx) of the user/service principal which will deploy the ARM templates.</li>
+</ul>
+<p>Create Azure Key Vault with Azure CLI:</p>
+<pre class="language-text"><code class="language-text">$ az deployment group create --mode Incremental -n {deployment name} -g {resource group name} --template-file ./arm/deploy.keyvault.json -p @deploy.keyvault.parameters.json</code></pre>
+<p><a href="https://shell.azure.com/bash"><img src="https://shell.azure.com/images/launchcloudshell.png" alt="Launch Cloud Shell" title="Launch Cloud Shell"></a></p>
+<p>Via Azure Portal</p>
+<p><a href="https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fcpinotossi%2Faz-storagesharding%2Fmain%2Farm%2Fdeploy.keyvault.json"><img src="https://aka.ms/deploytoazurebutton" alt="Deploy to Azure"></a></p>
+<h2 id="create-certificate-inside-azure-key-vault" tabindex="-1">Create Certificate inside Azure Key Vault <a class="direct-link" href="#create-certificate-inside-azure-key-vault" aria-hidden="true">#</a></h2>
+<hr>
+<p>Update &quot;subject&quot; value of azure certificate policy <a href="./certificate.policy.json">certificate.policy.json</a> with your certificate CN (e.g <a href="http://download.sample.com">download.sample.com</a>).</p>
+<pre class="language-text"><code class="language-text">"subject": "CN={REPLACE}",</code></pre>
+<p>Create Certificate via Azure CLI:</p>
+<pre class="language-text"><code class="language-text">$ az keyvault certificate create --vault-name {prefix}-01-kv -n {your-suffix}-01-certificate-01-kv --policy @certificate.policy.json</code></pre>
+<p><a href="https://shell.azure.com/bash"><img src="https://azure.microsoft.com/svghandler/cloud-shell/?width=50" alt="Launch Cloud Shell" title="Launch Cloud Shell"></a></p>
+<p>IMPORTANT: Replace value {your-suffix} of parameter &quot;-n&quot;.</p>
+<h2 id="deploy-application-gateway-and-rest" tabindex="-1">Deploy Application Gateway and rest <a class="direct-link" href="#deploy-application-gateway-and-rest" aria-hidden="true">#</a></h2>
+<hr>
+<p>Update parameter file <a href="./deploy.parameters.json">parameters.json</a>.</p>
+<ul>
+<li>prefix: Use the same unique string as used during the Azure Key Vault deployment.</li>
+<li>regionPairA: Use the same Location as used during the Azure Key Vault deployment.</li>
+<li>regionPairB: Look up the corresponding pair Azure Region <a href="https://docs.microsoft.com/en-us/azure/best-practices-availability-paired-regions#azure-regional-pairs">here</a>.</li>
+<li>myip: IP which will be whitelisted on the Azure Storage Accounts.</li>
+<li>certificationCN: FQDN, same as used during the subject CN inside the certificate.</li>
+</ul>
+<p>via Azure CLI</p>
+<pre class="language-text"><code class="language-text">$ az deployment group create --mode Incremental -n {deployment name} -g {resource group name} --template-file ./arm/deploy.json -p @deploy.parameters.json</code></pre>
+<p><a href="https://shell.azure.com/bash"><img src="https://azure.microsoft.com/svghandler/cloud-shell/?width=50" alt="Launch Cloud Shell" title="Launch Cloud Shell"></a></p>
+<p>via Azure Portal</p>
+<p><a href="https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fcpinotossi%2Faz-storagesharding%2Fmain%2Farm%2Fdeploy.json"><img src="https://aka.ms/deploytoazurebutton" alt="Deploy to Azure"></a></p>
+<h2 id="china-deployment" tabindex="-1">China Deployment <a class="direct-link" href="#china-deployment" aria-hidden="true">#</a></h2>
+<hr>
+<p>The following points need to be considered in case of China:</p>
+<ul>
+<li>Application Gateway V2 is only supported in certain China Regions (we used &quot;China North 2&quot;).</li>
+<li>Availability Zones for Application Gateway are not supported.</li>
+<li>Availability Zones for Public IP are not supported.</li>
+<li>Routing Preference for Storage Account are not supported.</li>
+<li>Make sure to choose the right Storage Domain for China (&quot;<a href="http://blob.core.chinacloudapi.cn">blob.core.chinacloudapi.cn</a>&quot;).</li>
+</ul>
+<h2 id="dns-entry" tabindex="-1">DNS Entry <a class="direct-link" href="#dns-entry" aria-hidden="true">#</a></h2>
+<hr>
+<p>In case you like to test via your Domain directly you will need to add an A Record inside the corresponding DNS Zone and use the Application Gateway Public IP.</p>
+<h2 id="number-of-storage-accounts" tabindex="-1">Number of Storage Accounts <a class="direct-link" href="#number-of-storage-accounts" aria-hidden="true">#</a></h2>
+<hr>
+<p>The ARM Template will deploy two Storage Account.<br>
+The Application Gateway will load balance incoming request between both Storage Account.<br>
+To make this work we will need to store the same Data under the same Container on both Storage Accounts.</p>
+<h3 id="azure-storage-access" tabindex="-1">Azure Storage Access <a class="direct-link" href="#azure-storage-access" aria-hidden="true">#</a></h3>
+<hr>
+<p>Azure Storage Account are setup to only allow the Application Gateway and myIP to access the corresponding Data directly via the following Azure Storage Account setup:</p>
+<pre class="language-text"><code class="language-text">"networkAcls": {<br>    "resourceAccessRules": [],<br>    "bypass": "AzureServices",<br>    "virtualNetworkRules": [<br>        {<br>            "id": "[variables('subnetRef')]",<br>            "action": "Allow",<br>            "state": "Succeeded"<br>        }<br>    ],<br>    "ipRules": [<br>        {<br>            "value": "[parameters('myip')]",<br>            "action": "Allow"<br>        }<br>    ],<br>    "defaultAction": "Deny"<br>},</code></pre>
+<h2 id="azure-storage-internet-routing" tabindex="-1">Azure Storage Internet Routing <a class="direct-link" href="#azure-storage-internet-routing" aria-hidden="true">#</a></h2>
+<hr>
+<p>You can setup Azure Storage Account with <a href="https://docs.microsoft.com/en-us/azure/storage/common/network-routing-preference">Internet Routing Preference</a>. This will reduce the Bandwidth cost.</p>
+<pre class="language-text"><code class="language-text">"routingPreference": {<br>    "routingChoice": "InternetRouting",<br>    "publishMicrosoftEndpoints": false,<br>    "publishInternetEndpoints": false<br>},</code></pre>
+<h3 id="cooled-access-tier-for-blobs" tabindex="-1">Cooled access tier for Blobs <a class="direct-link" href="#cooled-access-tier-for-blobs" aria-hidden="true">#</a></h3>
+<p>--</p>
+<p>We did setup the Azure Blob Storage with Access Tier &quot;Cool&quot;.<br>
+Our expection is that we will only use &quot;read&quot; operations and therefore &quot;Cool&quot; is the most cost efficient option.</p>
+<pre class="language-text"><code class="language-text">    },<br>    "accessTier": "Cool"<br>}</code></pre>
+<h2 id="test-url" tabindex="-1">Test URL <a class="direct-link" href="#test-url" aria-hidden="true">#</a></h2>
+<hr>
+<p>IMPORTANT: You will need to upload a file with the name &quot;test.txt&quot; under the container &quot;test&quot; of each Storage Account first.</p>
+<p>Access the file directly via the blob storage<br>
+NOTE: Works only if you whitelisted your IP.</p>
+<pre class="language-text"><code class="language-text">curl -v -k curl -v -k https://<STORAGE-ACCOUNT-NAME>.blob.core.windows.net/test/test.txt</code></pre>
+<p>Access via the Application Gateway</p>
+<pre class="language-text"><code class="language-text">curl -v -k curl -v -k https://<YOUR-DOMAIN>/test</code></pre>
+<h2 id="clean-up" tabindex="-1">Clean Up <a class="direct-link" href="#clean-up" aria-hidden="true">#</a></h2>
+<hr>
+<pre class="language-text"><code class="language-text">PS C:\sbapp> az deployment group create --resource-group {resource group name} --mode complete --name delete --template-file ./arm/empty.json</code></pre>
+<h2 id="usefull-links" tabindex="-1">Usefull Links <a class="direct-link" href="#usefull-links" aria-hidden="true">#</a></h2>
+<hr>
+<ul>
+<li><a href="https://docs.microsoft.com/en-us/azure/storage/blobs/blob-inventory">Ms Doc: Use Azure Storage blob inventory to manage blob data</a></li>
+<li><a href="https://docs.microsoft.com/en-us/azure/application-gateway/key-vault-certs">MS Doc: How AGW terminates TLS</a></li>
+</ul>
+
+<hr>
+<ul><li>Next: <a href="/posts/cptdagw-waf/">Azure Application Gateway, WAF and Certificate</a></li><li>Previous: <a href="/posts/cptdfun-alert/">Azure Function triggered by Azure Alert</a></li>
+</ul>
+
+    </main>
+
+    <footer></footer>
+    <!-- Current page: /posts/cptdagw-storage/ -->
+  </body>
+</html>

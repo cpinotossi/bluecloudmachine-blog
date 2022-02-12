@@ -1,0 +1,462 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Azure Firewall, Loadbalancer and NAT</title>
+    <meta name="description" content="This is a post about azure firewall and NAT">
+    <link rel="stylesheet" href="/css/index.css">
+  </head>
+  <body>
+    <header>
+      <h1 class="home"><a href="/">bluecloudmachine.org</a></h1>
+      <ul class="nav">
+        <li class="nav-item"><a href="/">Home</a></li>
+        <li class="nav-item"><a href="/about/">About Me</a></li>
+        <li class="nav-item"><a href="/posts/">Archive</a></li>
+      </ul>
+    </header>
+
+    <main class="tmpl-post">
+      <h1>Azure Firewall, Loadbalancer and NAT</h1>
+
+<time datetime="2021-12-25">25 Dec 2021</time>
+
+<div><a href="/img/cptdfw-lb/cptdfw.title.png"><picture> <source type="image/webp" srcset=" /img/cptdfw-lb/DjgbQVb4lF-320.webp 320w , /img/cptdfw-lb/DjgbQVb4lF-640.webp 640w , /img/cptdfw-lb/DjgbQVb4lF-960.webp 960w ," > <img
+      loading="lazy"
+      alt="Azure Firewall, Loadbalancer and Asymmetric routing"
+      src="/img/cptdfw-lb/DjgbQVb4lF-320.jpeg"
+      sizes="(max-width: 320px) 320px, (min-width: 640px) 640px, (min-width: 960px) 960px, 100vw"
+      srcset=" /img/cptdfw-lb/DjgbQVb4lF-320.jpeg 320w , /img/cptdfw-lb/DjgbQVb4lF-640.jpeg 640w , /img/cptdfw-lb/DjgbQVb4lF-960.jpeg 960w ,"> </picture></a></div>
+<p><a href="/img/cptdfw-lb/cptdfw.title.png">Image: Azure Firewall, Loadbalancer and Asymmetric routing</a></p>
+<p>Azure Firewall [fw] can be combined with Azure Load Balancer [lb]. The officel Azure <a href="https://docs.microsoft.com/en-us/azure/firewall/integrate-lb#fix-the-routing-issue">documentation</a> does describe the concept in detail.</p>
+<p>In additon there is an excellent <a href="https://blog.cloudtrooper.net/2020/11/28/dont-let-your-azure-routes-bite-you/">article</a> by Jose Moreno.</p>
+<p>In the following article I would like to describe my own expirences by playing with lb and fw.</p>
+<p>The goal is to setup an enviroment like described at the offical azure documentation and avoid <em>Asymmetric routing</em>.</p>
+<blockquote>
+<p>Asymmetric routing and Azure Firewall<br>
+Asymmetric routing is where a packet takes one path to the destination and takes another path when returning to the source. This issue occurs when a subnet has a default route going to the firewall's private IP address and you're using a public load balancer. In this case, the incoming load balancer traffic is received via its public IP address, but the return path goes through the firewall's private IP address. Since the firewall is stateful, it drops the returning packet because the firewall isn't aware of such an established session.<br>
+(<a href="https://docs.microsoft.com/en-us/azure/firewall/integrate-lb#asymmetric-routing">source</a>)</p>
+</blockquote>
+<p>IMPORTANT: By reading the official documentation you will see that it does mention two options. One with the Internal LB, one with the Public LB. Even if the documention does mention very clearly <em>The prefered design is to integrate an internal lb</em>. We will go with the Public LB to see what we can learn from going the <em>wrong</em> path ;).</p>
+<h2 id="azure-load-balancer-setup" tabindex="-1">Azure Load Balancer Setup <a class="direct-link" href="#azure-load-balancer-setup" aria-hidden="true">#</a></h2>
+<hr>
+<p>First step, setup an the needed Azure resources:</p>
+<ul>
+<li>Virtual Machine [vm] (cptdfwspoke)</li>
+<li>Private IP of the vm [vm-ip] (10.2.0.4)</li>
+<li>Azure Standard Loadbalancer [lb]</li>
+<li>Azure Public IP [lb-pip] (104.45.155.21), assigend to the lb frontendIPConfigurations</li>
+<li>lb backendAddressPools (includes VM (cptdfwspoke) with vm-ip (10.2.0.4))</li>
+<li>lb inboundNatRule</li>
+<li>outboundRule</li>
+<li>Network Security Group [nsg] (to allow vm to receive traffic via lb-pip)</li>
+<li>Virtual Network [vnet] and corresponding subnet [sn] to host our vm</li>
+</ul>
+<blockquote>
+<p>NOTE: Best practices do recommend the usage of Azure NAT Gateway but our goal today is to keep things as simple as possible. So we will go without NAT Gatway and maybe risk to run into the <a href="https://docs.microsoft.com/en-us/azure/load-balancer/troubleshoot-outbound-connection#snatexhaust">port exhaustion issue</a>.</p>
+</blockquote>
+<h2 id="test-connectivity-of-vm-in-combination-with-load-balancer" tabindex="-1">Test connectivity of vm in combination with Load Balancer <a class="direct-link" href="#test-connectivity-of-vm-in-combination-with-load-balancer" aria-hidden="true">#</a></h2>
+<hr>
+<p>Verify the vm-ip used by the Network Interface Card [NIC] of our vm:</p>
+<pre class="language-text"><code class="language-text">ifconfig | grep inet | awk '{print $1 "\t" $2}'</code></pre>
+<p>Result:</p>
+<pre class="language-text"><code class="language-text">inet    10.2.0.4<br>inet6   fe80::20d:3aff:fe55:55a3<br>inet    127.0.0.1<br>inet6   ::1</code></pre>
+<blockquote>
+<p>NOTE: We make use of <a href="https://docs.microsoft.com/en-us/azure/bastion/bastion-overview">azure bastion host</a> to log into our vm.</p>
+</blockquote>
+<p>The nic of our vm does use the vm-ip 10.2.0.4 (private IP).</p>
+<p>Find out which IP is used for outbound connections to the internet from our vm via lb:</p>
+<pre class="language-text"><code class="language-text">curl ifconfig.me</code></pre>
+<p>Result:</p>
+<pre class="language-text"><code class="language-text">104.45.155.21 </code></pre>
+<blockquote>
+<p>CONCLUSION: Our vm does make use of the lb-pip (104.45.155.21) to communicate via the internet. In addtion the curl (HTTP) response does proof that outbound connectivity provided via the lb works.</p>
+</blockquote>
+<h2 id="verify-how-the-loadbalancer-frontend-ip-lb-pip-is-connected-to-our-vm" tabindex="-1">Verify how the Loadbalancer Frontend IP [lb-pip] is connected to our vm <a class="direct-link" href="#verify-how-the-loadbalancer-frontend-ip-lb-pip-is-connected-to-our-vm" aria-hidden="true">#</a></h2>
+<hr>
+<p>As soon as you add a vm to an lb backend pool it will get the lb-pip assigened.<br>
+At the same time the VM will no longer be able create outbound connections to the internet if we do not setup the corresponding settings. In our case we did setup an outbound rule for our vm to be still able to talk to the internet.</p>
+<p>To see how this is setup inside the corresponding azure resources let us start by getting the lb-pip used by the lb:</p>
+<pre class="language-text"><code class="language-text">lb-pipname=$(az network lb show -n cptdfwspoke -g cptdfw --query frontendIpConfigurations[].publicIpAddress.id -o tsv | awk -F/ '{print $NF}')<br><br>az network public-ip show -g cptdfw -n $lb-pipname --query ipAddress -o tsv</code></pre>
+<p>Result:</p>
+<pre class="language-text"><code class="language-text">104.45.155.21</code></pre>
+<p>Now let us see how our lb-pip is aligned with our vm.</p>
+<p>Remember we have seen before that our vm does use the lb-pip (Pub IP).</p>
+<p>But we all know the vm itself does not provide connectivity. It´s the Network Interface Card [nic], attached to the vm, which does provide the connectivity. And therefore we need to look closer to the nic used by our vm.</p>
+<p>Let´s verify if the nic attached to the VM does reference the lb-pip:</p>
+<pre class="language-text"><code class="language-text">nic=$(az vm show -g cptdfw -n cptdfwspoke --query networkProfile.networkInterfaces[].id -o tsv| awk -F/ '{print $NF}')<br><br>az network nic show -n $nic -g cptdfw --query 'ipConfigurations[].publicIpAddress' -o tsv</code></pre>
+<p>Result:</p>
+<pre class="language-text"><code class="language-text">empty (null)</code></pre>
+<p>&quot;null&quot; indicates that there is no public ip (lb-pip) assigend to the ip configuration of the nic.</p>
+<p>But if we lookup the loadBalancerInboundNatRules of our nic we can see that it does refer our lb inbountNatRule</p>
+<pre class="language-text"><code class="language-text">az network nic show -n $nic -g cptdfw --query 'ipConfigurations[].loadBalancerInboundNatRules[].id' -o tsv| awk -F/ '{print $NF}'<br>cptdfwspoke</code></pre>
+<blockquote>
+<p>CONCLUSION: The lb-pip is not assigned directly as an public ip to the nic of our vm. Instead it is assigned via the corresponding lb settings of the nic.</p>
+</blockquote>
+<h2 id="watch-the-flow-between-client-and-load-balancer" tabindex="-1">Watch the flow between client and Load Balancer <a class="direct-link" href="#watch-the-flow-between-client-and-load-balancer" aria-hidden="true">#</a></h2>
+<hr>
+<p>Now after we have seen that everything works as expected let us try to follow the flow of a tcp package send from our client till to the vm, through the lb.</p>
+<blockquote>
+<p>DISCLAIMER: I should mention right from the beginning that we will not be able to see tcp logs from inside the lb. We only will be able to see the tcp logs on client side and vm side.</p>
+</blockquote>
+<p>First let us summarize which IPs exisit in our current setup:</p>
+<p>The client-ip (my pc local IP) &quot;172.25.155.32&quot; which can be checked via the linux tool ifconfig:</p>
+<pre class="language-text"><code class="language-text">ifconfig | grep inet | awk '{print $1 "\t" $2}'</code></pre>
+<p>Result:</p>
+<pre class="language-text"><code class="language-text">inet    172.25.155.32<br>inet6   fe80::215:5dff:fee2:907b<br>inet    127.0.0.1<br>inet6   ::1</code></pre>
+<p>The client-pip (my pc public IP) &quot;93.230.208.209&quot; which is provided by my ISP and which can be verified via free services like <a href="http://ifconfig.me">http://ifconfig.me</a>:</p>
+<pre class="language-text"><code class="language-text">curl ifconfig.me</code></pre>
+<p>Result:</p>
+<pre class="language-text"><code class="language-text">93.230.208.209</code></pre>
+<blockquote>
+<p>NOTE: the client-ip (172.25.155.32) will be S-NAT by my ISP to become the client-pip (93.230.208.209):</p>
+</blockquote>
+<p>On Azure we have two IPs:</p>
+<ul>
+<li>vm-ip (10.2.0.4)</li>
+<li>lb public ip/lb-pip (104.45.155.21)</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th>IP</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>client-ip</td>
+<td>172.25.155.32</td>
+</tr>
+<tr>
+<td>client-pip</td>
+<td>93.230.208.209</td>
+</tr>
+<tr>
+<td>lb-pip</td>
+<td>104.45.155.21</td>
+</tr>
+<tr>
+<td>vm-ip</td>
+<td>10.2.0.4</td>
+</tr>
+</tbody>
+</table>
+<p>Before we start to send traffic to the vm let´s see if there is already traffic send to our vm on port 80.</p>
+<blockquote>
+<p>NOTE: Make sure you are root on the vm to be able to run tcpdump on the azure vm:</p>
+</blockquote>
+<pre class="language-text"><code class="language-text">sudo -i</code></pre>
+<p>Let´s get some tcp logs:</p>
+<pre class="language-text"><code class="language-text">root@cptdfwspoke:~# tcpdump port 80 and dst 10.2.0.4<br>tcpdump: verbose output suppressed, use -v or -vv for full protocol decode<br>listening on eth0, link-type EN10MB (Ethernet), capture size 262144 bytes<br>09:24:33.359120 IP 168.63.129.16.http > cptdfwspoke.internal.cloudapp.net.53642: Fla<br>gs [S.], seq 885760809, ack 4208169233, win 8192, options [mss 1460,nop,wscale 8,sac<br>kOK,TS val 1200223345 ecr 328774625], length 0<br>09:24:33.361116 IP 168.63.129.16.http > cptdfwspoke.internal.cloudapp.net.53642: Fla<br>gs [FP.], seq 1:2279, ack 200, win 8211, options [nop,nop,TS val 1200223347 ecr 3287<br>74626], length 2278: HTTP: HTTP/1.1 200 OK<br>09:24:33.361818 IP 168.63.129.16.http > cptdfwspoke.internal.cloudapp.net.53642: Fla<br>gs [.], ack 201, win 8211, options [nop,nop,TS val 1200223348 ecr 328774628], length<br> 0</code></pre>
+<p>Like we can see, we already receive traffic from the azure virtual public ip [avpi] 168.63.129.16.</p>
+<p><em>The azure virtual public ip 168.63.129.16 does enables health probes from Azure load balancer to determine the health state of VMs.</em><br>
+source: <a href="https://docs.microsoft.com/en-us/azure/virtual-network/what-is-ip-address-168-63-129-16">What is IP address 168.63.129.16?</a></p>
+<p>Our Network Security Group [nsg] already inlcude avpi (168.63.129.16).</p>
+<p>Every new nsg does include by default an inbound rule called AllowAzureLoadBalancerInBound which does include the avpi.</p>
+<pre class="language-text"><code class="language-text">az network nic list-effective-nsg -n cptdfwspoke -g cptdfw --query 'value[].effectiveSecurityRules[][][]' | jq -c '.[] | select(.name=="defaultSecurityRules/AllowAzureLoadBalancerInBound")'</code></pre>
+<p>Result:</p>
+<pre class="language-text"><code class="language-text">{<br>    "access": "Allow",<br>    "destinationAddressPrefix": "0.0.0.0/0",<br>    "destinationAddressPrefixes": [<br>        "0.0.0.0/0",<br>        "0.0.0.0/0"<br>    ],<br>    "destinationPortRange": "0-65535",<br>    "destinationPortRanges": [<br>        "0-65535"<br>    ],<br>    "direction": "Inbound",<br>    "expandedDestinationAddressPrefix": null,<br>    "expandedSourceAddressPrefix": [<br>        "168.63.129.16/32",<br>        "fe80::1234:5678:9abc/128"<br>    ],<br>    "name": "defaultSecurityRules/AllowAzureLoadBalancerInBound",<br>    "priority": 65001,<br>    "protocol": "All",<br>    "sourceAddressPrefix": "AzureLoadBalancer",<br>    "sourceAddressPrefixes": [<br>        "AzureLoadBalancer"<br>    ],<br>    "sourcePortRange": "0-65535",<br>    "sourcePortRanges": [<br>        "0-65535"<br>    ]<br>}</code></pre>
+<p>Another IP which could cause some nice could be the 169.254.169.254 aka the <a href="https://docs.microsoft.com/en-us/azure/virtual-machines/windows/instance-metadata-service?tabs=windows">Azure Metadata Service</a>. So we will need to exclude this one too.</p>
+<p>Filter out the avpi and Azure Metadata Service traffic:</p>
+<pre class="language-text"><code class="language-text">tcpdump -n port 80 and not host 168.63.129.16 and not host 169.254.169.254</code></pre>
+<p>In addition we also like to run tcpdump on our local machine.<br>
+There we also like to filter out all the traffic which is not relevant:</p>
+<pre class="language-text"><code class="language-text">sudo tcpdump -n port 80 and host 104.45.155.21</code></pre>
+<p>Send HTTP Request from my local machine:</p>
+<pre class="language-text"><code class="language-text">curl -v 104.45.155.21</code></pre>
+<p>Result:</p>
+<pre class="language-text"><code class="language-text">* Rebuilt URL to: 104.45.155.21/<br>*   Trying 104.45.155.21...<br>* TCP_NODELAY set<br>* Connected to 104.45.155.21 (104.45.155.21) port 80 (#0)<br>> GET / HTTP/1.1<br>> Host: 104.45.155.21<br>> User-Agent: curl/7.58.0<br>> Accept: */*<br>><br>< HTTP/1.1 200 OK<br>< Date: Tue, 21 Dec 2021 11:17:21 GMT<br>< Connection: keep-alive<br>< Transfer-Encoding: chunked<br><<br>{<br>        "host": "104.45.155.21",<br>        "user-agent": "curl/7.58.0",<br>        "accept": "*/*"<br>}{<br>        "ladd": "::ffff:10.2.0.4",<br>        "lport": 80,<br>        "radd": "::ffff:93.230.208.209",<br>        "rport": 21432<br>* Connection #0 to host 104.45.155.21 left intact</code></pre>
+<p>TCPdump logs from the vm:</p>
+<pre class="language-text"><code class="language-text">11:59:13.184079 IP 93.230.208.209.21468 > 10.2.0.4.80: Flags [S], seq 511333143, win 64240, options [mss 1452,sackOK,TS val 329791480 ecr 0,nop,wscale 7], length 0<br>11:59:13.184137 IP 10.2.0.4.80 > 93.230.208.209.21468: Flags [S.], seq 3773881649, ack 511333144, win 65160, options [mss 1460,sackOK,TS val 851192548 ecr 329791480,nop,<br>wscale 7], length 0<br>11:59:13.285163 IP 93.230.208.209.21468 > 10.2.0.4.80: Flags [.], ack 1, win 502, options [nop,nop,TS val 329791580 ecr 851192548], length 0<br>11:59:13.285164 IP 93.230.208.209.21468 > 10.2.0.4.80: Flags [P.], seq 1:78, ack 1, win 502, options [nop,nop,TS val 329791581 ecr 851192548], length 77: HTTP: GET / HTT<br>P/1.1<br>11:59:13.285255 IP 10.2.0.4.80 > 93.230.208.209.21468: Flags [.], ack 78, win 509, options [nop,nop,TS val 851192649 ecr 329791581], length 0<br>11:59:13.286225 IP 10.2.0.4.80 > 93.230.208.209.21468: Flags [P.], seq 1:297, ack 78, win 509, options [nop,nop,TS val 851192650 ecr 329791581], length 296: HTTP: HTTP/1<br>.1 200 OK<br>11:59:13.384761 IP 93.230.208.209.21468 > 10.2.0.4.80: Flags [.], ack 297, win 501, options [nop,nop,TS val 329791681 ecr 851192650], length 0<br>11:59:13.385301 IP 93.230.208.209.21468 > 10.2.0.4.80: Flags [F.], seq 78, ack 297, win 501, options [nop,nop,TS val 329791681 ecr 851192650], length 0<br>11:59:13.385594 IP 10.2.0.4.80 > 93.230.208.209.21468: Flags [F.], seq 297, ack 79, win 509, options [nop,nop,TS val 851192749 ecr 329791681], length 0<br>11:59:13.485865 IP 93.230.208.209.21468 > 10.2.0.4.80: Flags [.], ack 298, win 501, options [nop,nop,TS val 329791781 ecr 851192749], length 0</code></pre>
+<p>Logs from my local client</p>
+<pre class="language-text"><code class="language-text">12:59:13.465717 IP 172.25.155.32.34378 > 104.45.155.21.80: Flags [S], seq 511333143, win 64240, options [mss 1460,sackOK,TS val 329791480 ecr 0,nop,wscale 7], length 0<br>12:59:13.566053 IP 104.45.155.21.80 > 172.25.155.32.34378: Flags [S.], seq 3773881649, ack 511333144, win 65160, options [mss 1440,sackOK,TS val 851192548 ecr 329791480,nop,wscale 7], length 0<br>12:59:13.566314 IP 172.25.155.32.34378 > 104.45.155.21.80: Flags [.], ack 1, win 502, options [nop,nop,TS val 329791580 ecr 851192548], length 0<br>12:59:13.566775 IP 172.25.155.32.34378 > 104.45.155.21.80: Flags [P.], seq 1:78, ack 1, win 502, options [nop,nop,TS val 329791581 ecr 851192548], length 77: HTTP: GET / HTTP/1.1<br>12:59:13.666634 IP 104.45.155.21.80 > 172.25.155.32.34378: Flags [.], ack 78, win 509, options [nop,nop,TS val 851192649 ecr 329791581], length 0<br>12:59:13.666674 IP 104.45.155.21.80 > 172.25.155.32.34378: Flags [P.], seq 1:297, ack 78, win 509, options [nop,nop,TS val 851192650 ecr 329791581], length 296: HTTP: HTTP/1.1 200 OK<br>12:59:13.666704 IP 172.25.155.32.34378 > 104.45.155.21.80: Flags [.], ack 297, win 501, options [nop,nop,TS val 329791681 ecr 851192650], length 0<br>12:59:13.666951 IP 172.25.155.32.34378 > 104.45.155.21.80: Flags [F.], seq 78, ack 297, win 501, options [nop,nop,TS val 329791681 ecr 851192650], length 0<br>12:59:13.767036 IP 104.45.155.21.80 > 172.25.155.32.34378: Flags [F.], seq 297, ack 79, win 509, options [nop,nop,TS val 851192749 ecr 329791681], length 0<br>12:59:13.767197 IP 172.25.155.32.34378 > 104.45.155.21.80: Flags [.], ack 298, win 501, options [nop,nop,TS val 329791781 ecr 851192749], length 0</code></pre>
+<h2 id="analyze-the-tcpdump-logs-between-client-lb-and-vm" tabindex="-1">Analyze the TCPDump logs between client, lb and vm <a class="direct-link" href="#analyze-the-tcpdump-logs-between-client-lb-and-vm" aria-hidden="true">#</a></h2>
+<hr>
+<p>Looking through the logs we can see that S-NAT has been used between lb and vm</p>
+<ul>
+<li>
+<p>Client send: IP 172.25.155.32 &gt; 104.45.155.21:</p>
+</li>
+<li>
+<p>VM received: IP 93.230.208.209 &gt; 10.2.0.4</p>
+</li>
+<li>
+<p>My ISP does S-NAT 172.25.155.32 to 93.230.208.209</p>
+</li>
+<li>
+<p>Azure lb does D-NAT 104.45.155.21 to 10.2.0.4</p>
+</li>
+</ul>
+<p>And accordently the response does get NAT'ed too</p>
+<ul>
+<li>
+<p>VM send: IP 10.2.0.4 &gt; 93.230.208.209</p>
+</li>
+<li>
+<p>Client received: 104.45.155.21 &gt; 172.25.155.32</p>
+</li>
+<li>
+<p>Azure lb does S-NAT 10.2.0.4 to 104.45.155.21</p>
+</li>
+<li>
+<p>My ISP does D-NAT 93.230.208.209 to 172.25.155.32 to</p>
+</li>
+</ul>
+<p>A more schematic diagram looks as follow:</p>
+<div><a href="/img/cptdfw-lb/lbpip.flow.png"><picture> <source type="image/webp" srcset=" /img/cptdfw-lb/saYIGBgyJE-320.webp 320w , /img/cptdfw-lb/saYIGBgyJE-640.webp 640w , /img/cptdfw-lb/saYIGBgyJE-960.webp 960w ," > <img
+      loading="lazy"
+      alt="firewall-lb-asymmetric.png"
+      src="/img/cptdfw-lb/saYIGBgyJE-320.jpeg"
+      sizes="(max-width: 320px) 320px, (min-width: 640px) 640px, (min-width: 960px) 960px, 100vw"
+      srcset=" /img/cptdfw-lb/saYIGBgyJE-320.jpeg 320w , /img/cptdfw-lb/saYIGBgyJE-640.jpeg 640w , /img/cptdfw-lb/saYIGBgyJE-960.jpeg 960w ,"> </picture></a></div>
+<p><a href="/img/cptdfw-lb/lbpip.flow.png">Image: firewall-lb-asymmetric.png</a></p>
+<blockquote>
+<p>NOTE: For simplicity I excluded the NATing done by the ISP and the clients starts right away with the client-pip.</p>
+</blockquote>
+<h2 id="add-azure-firewall-to-the-mix" tabindex="-1">Add Azure Firewall to the mix <a class="direct-link" href="#add-azure-firewall-to-the-mix" aria-hidden="true">#</a></h2>
+<hr>
+<p>In a next step we will introduce the Azure Firewall [fw] into our existing deployment.<br>
+Like mentioned at the beginning of this article we will follow the architecture mentioned at the azure official <a href="https://docs.microsoft.com/en-us/azure/firewall/integrate-lb">documentation</a>:</p>
+<div><a href="/img/cptdfw-lb/firewall-lb-asymmetric.png"><picture> <source type="image/webp" srcset=" /img/cptdfw-lb/JqKApGRYjq-320.webp 320w , /img/cptdfw-lb/JqKApGRYjq-640.webp 640w ," > <img
+      loading="lazy"
+      alt="firewall-lb-asymmetric.png"
+      src="/img/cptdfw-lb/JqKApGRYjq-320.jpeg"
+      sizes="(max-width: 320px) 320px, (min-width: 640px) 640px, (min-width: 960px) 960px, 100vw"
+      srcset=" /img/cptdfw-lb/JqKApGRYjq-320.jpeg 320w , /img/cptdfw-lb/JqKApGRYjq-640.jpeg 640w ,"> </picture></a></div>
+<p><a href="/img/cptdfw-lb/firewall-lb-asymmetric.png">Image: firewall-lb-asymmetric.png</a></p>
+<p>We did setup a firewall with the public IP (fw-pip):</p>
+<pre class="language-text"><code class="language-text">fwip=$(az network firewall show -n cptdfw -g cptdfw --query ipConfigurations[].publicIpAddress.id -o tsv | awk -F/ '{print $NF}')<br>az network public-ip show -g cptdfw -n $fwip --query ipAddress -o tsv</code></pre>
+<p>Result:</p>
+<pre class="language-text"><code class="language-text">52.142.57.131</code></pre>
+<p>And a corresponding private IP (fw-ip):</p>
+<pre class="language-text"><code class="language-text">az network firewall show -g cptdfw -n cptdfw --query ipConfigurations[].privateIpAddress -o tsv</code></pre>
+<p>Result:</p>
+<pre class="language-text"><code class="language-text">10.0.3.4</code></pre>
+<p>Overall we have the following IPs:</p>
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th>IP</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>client-ip</td>
+<td>172.25.155.32</td>
+</tr>
+<tr>
+<td>client-pip</td>
+<td>93.230.208.209</td>
+</tr>
+<tr>
+<td>lb-pip</td>
+<td>104.45.155.21</td>
+</tr>
+<tr>
+<td>vm-ip</td>
+<td>10.2.0.4</td>
+</tr>
+<tr>
+<td>fw-pip</td>
+<td>52.142.57.131</td>
+</tr>
+<tr>
+<td>fw-ip</td>
+<td>10.0.3.4</td>
+</tr>
+</tbody>
+</table>
+<h2 id="azure-firewall-d-nat-rule" tabindex="-1">Azure Firewall D-NAT rule <a class="direct-link" href="#azure-firewall-d-nat-rule" aria-hidden="true">#</a></h2>
+<hr>
+<p>To integrate the fw with our existing lb we would like to run all the inbound traffic via our fw.</p>
+<p>Thereforew we defined the following fw nat rule:</p>
+<pre class="language-text"><code class="language-text">az network firewall policy rule-collection-group collection list -g cptdfw --policy-name cptdfw --rcg-name DefaultDnatRuleCollectionGroup --query '[0].rules[0].{src:destinationAddresses[0],srcport:destinationPorts[0],des:translatedAddress,desport:translatedPort}'</code></pre>
+<p>Result:</p>
+<pre class="language-text"><code class="language-text">{<br>  "des": "104.45.155.21",<br>  "desport": "80",<br>  "src": "52.142.57.131",<br>  "srcport": "80"<br>}</code></pre>
+<p>This fw D-NAT rule will rewrite incoming request on IP 52.142.57.131 (fw-pip) to the lb-pip 104.45.155.21.</p>
+<p>The following picture does show how the fw d-nat rule get´s applied:</p>
+<div><a href="/img/cptdfw-lb/fwpip.lbpip.dnat.png"><picture> <source type="image/webp" srcset=" /img/cptdfw-lb/SEHWyOqEcB-320.webp 320w , /img/cptdfw-lb/SEHWyOqEcB-640.webp 640w , /img/cptdfw-lb/SEHWyOqEcB-960.webp 960w ," > <img
+      loading="lazy"
+      alt="firewall-lb-asymmetric.png"
+      src="/img/cptdfw-lb/SEHWyOqEcB-320.jpeg"
+      sizes="(max-width: 320px) 320px, (min-width: 640px) 640px, (min-width: 960px) 960px, 100vw"
+      srcset=" /img/cptdfw-lb/SEHWyOqEcB-320.jpeg 320w , /img/cptdfw-lb/SEHWyOqEcB-640.jpeg 640w , /img/cptdfw-lb/SEHWyOqEcB-960.jpeg 960w ,"> </picture></a></div>
+<p><a href="/img/cptdfw-lb/fwpip.lbpip.dnat.png">Image: firewall-lb-asymmetric.png</a></p>
+<blockquote>
+<p>NOTE: In addition to D-NAT, connections via the firewall public IP address (inbound) are S-NATed to one of the firewall private IPs. This requirement today (also for Active/Active NVAs) to ensure symmetric routing.	To preserve the original source for HTTP/S, consider using XFF headers. For example, use a service such as Azure Front Door or Azure Application Gateway in front of the firewall. You can also add WAF as part of Azure Front Door and chain to the firewall.<br>
+(<a href="https://docs.microsoft.com/en-us/azure/firewall/overview#known-issues">source</a>)</p>
+</blockquote>
+<h2 id="azure-firewall-network-rule" tabindex="-1">Azure Firewall Network rule <a class="direct-link" href="#azure-firewall-network-rule" aria-hidden="true">#</a></h2>
+<hr>
+<p>In addition we did setup Network Rules to restrict the traffic only from our client-pip (src:93.230.208.209) to lb-pip (des:104.45.155.21):</p>
+<pre class="language-text"><code class="language-text">az network firewall policy rule-collection-group collection list -g cptdfw --policy-name cptdfw --rcg-name DefaultNetworkRuleCollectionGroup --query '[0].rules[0].{src:sourceAddresses[0],des:destinationAddresses[0],desport:destinationPorts[0]}'</code></pre>
+<p>Result:</p>
+<pre class="language-text"><code class="language-text">{<br>  "des": "104.45.155.21",<br>  "desport": "80",<br>  "src": "93.230.208.209"<br>}</code></pre>
+<p>It is important to understand that the destination IP needs to be the lb-pip of our lb and not the fw-pip.<br>
+This just works because of the way how fw applies the different rules:</p>
+<blockquote>
+<p><em>Application rules are always processed after Network rules, which are processed after D-NAT rules regardless of Rule collection group or Rule collection priority and policy inheritance.</em><br>
+source <a href="https://docs.microsoft.com/en-us/azure/firewall/rule-processing">Configure Azure Firewall rules</a></p>
+</blockquote>
+<p>That is the reason why we use the lb-pip as destination inside the fw network rule.</p>
+<h2 id="watch-the-flow-again-between-client-load-balancer-and-firewall-inbetween" tabindex="-1">Watch the flow again between client, Load Balancer and Firewall inbetween <a class="direct-link" href="#watch-the-flow-again-between-client-load-balancer-and-firewall-inbetween" aria-hidden="true">#</a></h2>
+<hr>
+<p>HTTP Request from local pc/client</p>
+<pre class="language-text"><code class="language-text">curl -v 52.142.57.131<br>* Rebuilt URL to: 52.142.57.131/<br>*   Trying 52.142.57.131...<br>* TCP_NODELAY set<br>* Connected to 52.142.57.131 (52.142.57.131) port 80 (#0)<br>> GET / HTTP/1.1<br>> Host: 52.142.57.131<br>> User-Agent: curl/7.58.0<br>> Accept: */*<br>><br>< HTTP/1.1 200 OK<br>< Date: Tue, 21 Dec 2021 16:33:50 GMT<br>< Connection: keep-alive<br>< Transfer-Encoding: chunked<br><<br>{<br>        "host": "52.142.57.131",<br>        "user-agent": "curl/7.58.0",<br>        "accept": "*/*"<br>}{<br>        "ladd": "::ffff:10.2.0.4",<br>        "lport": 80,<br>        "radd": "::ffff:52.142.57.131",<br>        "rport": 1024<br>* Connection #0 to host 52.142.57.131 left intact</code></pre>
+<p>TCP Dump from local pc/client (UTC+1):</p>
+<pre class="language-text"><code class="language-text">sudo tcpdump -n port 80 and host 52.142.57.131<br>tcpdump: verbose output suppressed, use -v or -vv for full protocol decode<br>listening on eth0, link-type EN10MB (Ethernet), capture size 262144 bytes<br>17:33:51.225503 IP 172.25.155.32.44680 > 52.142.57.131.80: Flags [S], seq 1032879940, win 64240, options [mss 1460,sackOK,TS val 1438364048 ecr 0,nop,wscale 7], length 0<br>17:33:51.342776 IP 52.142.57.131.80 > 172.25.155.32.44680: Flags [S.], seq 2803633477, ack 1032879941, win 65160, options [mss 1420,sackOK,TS val 835345473 ecr 1438364048,nop,wscale 7], length 0<br>17:33:51.343193 IP 172.25.155.32.44680 > 52.142.57.131.80: Flags [.], ack 1, win 502, options [nop,nop,TS val 1438364166 ecr 835345473], length 0<br>17:33:51.345123 IP 172.25.155.32.44680 > 52.142.57.131.80: Flags [P.], seq 1:78, ack 1, win 502, options [nop,nop,TS val 1438364168 ecr 835345473], length 77: HTTP: GET / HTTP/1.1<br>17:33:51.446758 IP 52.142.57.131.80 > 172.25.155.32.44680: Flags [.], ack 78, win 509, options [nop,nop,TS val 835345587 ecr 1438364168], length 0<br>17:33:51.446869 IP 52.142.57.131.80 > 172.25.155.32.44680: Flags [P.], seq 1:295, ack 78, win 509, options [nop,nop,TS val 835345588 ecr 1438364168], length 294: HTTP: HTTP/1.1 200 OK<br>17:33:51.446937 IP 172.25.155.32.44680 > 52.142.57.131.80: Flags [.], ack 295, win 501, options [nop,nop,TS val 1438364270 ecr 835345588], length 0<br>17:33:51.452374 IP 172.25.155.32.44680 > 52.142.57.131.80: Flags [F.], seq 78, ack 295, win 501, options [nop,nop,TS val 1438364275 ecr 835345588], length 0<br>17:33:51.652502 IP 52.142.57.131.80 > 172.25.155.32.44680: Flags [F.], seq 295, ack 79, win 509, options [nop,nop,TS val 835345696 ecr 1438364275], length 0<br>17:33:51.652722 IP 172.25.155.32.44680 > 52.142.57.131.80: Flags [.], ack 296, win 501, options [nop,nop,TS val 1438364476 ecr 835345696], length 0<br>^C<br>10 packets captured<br>10 packets received by filter<br>0 packets dropped by kernel</code></pre>
+<p>TCP dump from vm (UTC)</p>
+<pre class="language-text"><code class="language-text"> tcpdump -n port 80 and not host 168.63.129.16 and not host 169.254.169.254<br>tcpdump: verbose output suppressed, use -v or -vv for full protocol decode<br>listening on eth0, link-type EN10MB (Ethernet), capture size 262144 bytes<br>16:33:50.702257 IP 52.142.57.131.1024 > 10.2.0.4.80: Flags [S], seq 1032879940, win 64240, options [mss 1432,sackOK,TS val 1438364048 ecr 0,nop,wscale 7], length 0<br>16:33:50.702319 IP 10.2.0.4.80 > 52.142.57.131.1024: Flags [S.], seq 2803633477, ack 1032879941, win 65160, options [mss 1460,sackOK,TS val 835345473 ecr 1438364048,nop,<br>wscale 7], length 0<br>16:33:50.814814 IP 52.142.57.131.1024 > 10.2.0.4.80: Flags [.], ack 1, win 502, options [nop,nop,TS val 1438364166 ecr 835345473], length 0<br>16:33:50.816521 IP 52.142.57.131.1024 > 10.2.0.4.80: Flags [P.], seq 1:78, ack 1, win 502, options [nop,nop,TS val 1438364168 ecr 835345473], length 77: HTTP: GET / HTTP<br>/1.1<br>16:33:50.816546 IP 10.2.0.4.80 > 52.142.57.131.1024: Flags [.], ack 78, win 509, options [nop,nop,TS val 835345587 ecr 1438364168], length 0<br>16:33:50.817243 IP 10.2.0.4.80 > 52.142.57.131.1024: Flags [P.], seq 1:295, ack 78, win 509, options [nop,nop,TS val 835345588 ecr 1438364168], length 294: HTTP: HTTP/1.<br>1 200 OK<br>16:33:50.917852 IP 52.142.57.131.1024 > 10.2.0.4.80: Flags [.], ack 295, win 501, options [nop,nop,TS val 1438364270 ecr 835345588], length 0<br>16:33:50.924976 IP 52.142.57.131.1024 > 10.2.0.4.80: Flags [F.], seq 78, ack 295, win 501, options [nop,nop,TS val 1438364275 ecr 835345588], length 0<br>16:33:50.925433 IP 10.2.0.4.80 > 52.142.57.131.1024: Flags [F.], seq 295, ack 79, win 509, options [nop,nop,TS val 835345696 ecr 1438364275], length 0<br>16:33:51.124398 IP 52.142.57.131.1024 > 10.2.0.4.80: Flags [.], ack 296, win 501, options [nop,nop,TS val 1438364476 ecr 835345696], length 0<br>^C<br>10 packets captured<br>10 packets received by filter<br>0 packets dropped by kernel</code></pre>
+<h2 id="analyze-the-tcpdump-logs-between-client-fw-lb-and-vm" tabindex="-1">Analyze the TCPDump logs between client, fw, lb and vm <a class="direct-link" href="#analyze-the-tcpdump-logs-between-client-fw-lb-and-vm" aria-hidden="true">#</a></h2>
+<hr>
+<p>Looking through the logs we can see that S-NAT has been used between lb and vm</p>
+<ul>
+<li>
+<p>Client send: IP 172.25.155.32 (client-pip) &gt; 52.142.57.131 (fw-pip)</p>
+</li>
+<li>
+<p>VM received: IP 52.142.57.131 (fw-pip) &gt; 10.2.0.4 (vm-ip)</p>
+</li>
+<li>
+<p>My ISP does S-NAT 172.25.155.32 (client-ip) to 93.230.208.209 (client-pip)</p>
+</li>
+<li>
+<p>Azure fw does D-NAT 52.142.57.131 (fw-pip) &gt; 104.45.155.21 (lb-pip)</p>
+</li>
+<li>
+<p>Azure fw does S-NAT 52.142.57.131 (fw-pip) &gt; 10.0.3.4 (fw-pip) // Based on <a href="https://docs.microsoft.com/en-us/azure/firewall/overview#known-issues">fw known issues</a></p>
+</li>
+<li>
+<p>Azure lb does D-NAT 104.45.155.21 (lb-pip) to 10.2.0.4 (vm-ip)</p>
+</li>
+</ul>
+<p>And accordently the response does get NAT'ed too:</p>
+<ul>
+<li>
+<p>VM send: IP 10.2.0.4.80 &gt; 52.142.57.131<br>
+Client received: 52.142.57.131 &gt; 172.25.155.32</p>
+</li>
+<li>
+<p>Azure lb does S-NAT 10.2.0.4 to 104.45.155.21</p>
+</li>
+<li>
+<p>Azure fw does S-NAT 104.45.155.21 to 52.142.57.131</p>
+</li>
+<li>
+<p>My ISP does D-NAT 93.230.208.209 to 172.25.155.32</p>
+</li>
+</ul>
+<h2 id="azure-firewall-logs" tabindex="-1">Azure Firewall Logs <a class="direct-link" href="#azure-firewall-logs" aria-hidden="true">#</a></h2>
+<hr>
+<p>We have seen that a request has been received by the vm around 16:33:50 (UTC).<br>
+Let us find the corresponding fw logs which should proof that the fw D-NAT rule and the fw Network Rule have been applied:</p>
+<pre class="language-text"><code class="language-text">lawid=$(az monitor log-analytics workspace show -g cptdfw -n cptdfw --query customerId -o tsv)<br>az monitor log-analytics query -w $lawid --analytics-query 'AzureDiagnostics | where TimeGenerated between(datetime("2021-12-21 16:32:00") .. datetime("2021-12-21 16:34:00")) | where OperationName contains "AzureFirewall"| project TimeGenerated,OperationName,msg_s' -o table</code></pre>
+<p>Result:</p>
+<pre class="language-text"><code class="language-text">OperationName                TableName      TimeGenerated           Msg_s<br>---------------------------  -------------  ----------------------  -----------------------------------------------------------------------------------------<br>AzureFirewallNatRuleLog      PrimaryResult  2021-12-21T16:33:50.7Z  TCP request from 93.230.208.209:21410 to 52.142.57.131:80 was DNAT'ed to 104.45.155.21:80<br>AzureFirewallNetworkRuleLog  PrimaryResult  2021-12-21T16:33:50.7Z  TCP request from 93.230.208.209:21410 to 104.45.155.21:80. Action: Allow.</code></pre>
+<blockquote>
+<p>Conclusion: Like expected we can see how the fw did D-NAT destination IP 52.142.57.131 to 104.45.155.21.<br>
+Also we can see that the fw did allow inbound request from 93.230.208.209</p>
+</blockquote>
+<h2 id="lock-down-lb-public-ip" tabindex="-1">Lock down lb public ip <a class="direct-link" href="#lock-down-lb-public-ip" aria-hidden="true">#</a></h2>
+<hr>
+<p>Currently we are still able to send request to the lb-pip.<br>
+But because we would like to see all request to go through our fw we need to lock down access via lb-pip.</p>
+<p>One way could be by locking down the access of our lb-pip via an IP based Access Control list [acl].<br>
+But the azure lb does not offer such a functionality.</p>
+<p>Another way could be to limit access to our VM just via the lb with nsg rules. But let´s assume we like to make use of our shine new fw.</p>
+<p>Therefore we need to make use of User Defined Routes [udr] which are defined via route tables [rt].</p>
+<p>We will assign a rt to the subnet which does include our vm with the following udr´s:</p>
+<pre class="language-text"><code class="language-text">az network route-table show -g cptdfw -n cptdfwspoke --query 'routes[].{name:name,dst:addressPrefix,nextHopType:nextHopType,nextHopIpAddress:nextHopIpAddress}'</code></pre>
+<p>Result:</p>
+<pre class="language-text"><code class="language-text">[<br>  {<br>    "dst": "52.142.57.131/32",<br>    "name": "fwviainternet",<br>    "nextHopIpAddress": null,<br>    "nextHopType": "Internet"<br>  },<br>  {<br>    "dst": "0.0.0.0/0",<br>    "name": "internetviafw",<br>    "nextHopIpAddress": "10.0.3.4",<br>    "nextHopType": "VirtualAppliance"<br>  }<br>]</code></pre>
+<ul>
+<li>0.0.0.0/0 does also match lb-pip and fw-pip</li>
+<li>52.142.57.131 = fw-pip</li>
+<li>nextHopIpAddress of fwviainternet is expected to be null because the internet is not represented by a single ip ;)</li>
+</ul>
+<p>Let´s see how this changes the routing of our vm.</p>
+<pre class="language-text"><code class="language-text">nicid=$(az network nic show -n cptdfwspoke -g cptdfw --query id -o tsv)<br>az network nic show-effective-route-table --ids $nicid -o table</code></pre>
+<p>Result:</p>
+<pre class="language-text"><code class="language-text">Source    State    Address Prefix    Next Hop Type     Next Hop IP<br>--------  -------  ----------------  ----------------  -------------<br>Default   Active   10.2.0.0/16       VnetLocal<br>Default   Active   10.0.0.0/16       VNetPeering<br>User      Active   52.142.57.131/32  Internet<br>Default   Invalid  0.0.0.0/0         Internet<br>User      Active   0.0.0.0/0         VirtualAppliance  10.0.3.4</code></pre>
+<ul>
+<li>Like we can see all traffic for 0.0.0.0/0 is now send to the private ip of our fw (fw-ip).</li>
+<li>Traffic send to the fw-pip will be send to the internet which also includes our lb-pip</li>
+</ul>
+<p>With the introduction udr the flow via the fw-pip looks as follow:</p>
+<div><a href="/img/cptdfw-lb/fwpip.lbpip.flow.png"><picture> <source type="image/webp" srcset=" /img/cptdfw-lb/W3-5Y9JD22-320.webp 320w , /img/cptdfw-lb/W3-5Y9JD22-640.webp 640w , /img/cptdfw-lb/W3-5Y9JD22-960.webp 960w ," > <img
+      loading="lazy"
+      alt="symetric flow with firewall and loadbalancer"
+      src="/img/cptdfw-lb/W3-5Y9JD22-320.jpeg"
+      sizes="(max-width: 320px) 320px, (min-width: 640px) 640px, (min-width: 960px) 960px, 100vw"
+      srcset=" /img/cptdfw-lb/W3-5Y9JD22-320.jpeg 320w , /img/cptdfw-lb/W3-5Y9JD22-640.jpeg 640w , /img/cptdfw-lb/W3-5Y9JD22-960.jpeg 960w ,"> </picture></a></div>
+<p><a href="/img/cptdfw-lb/fwpip.lbpip.flow.png">Image: symetric flow with firewall and loadbalancer</a></p>
+<p>The flow via the lb-pip (lb-pip) does change as follow:</p>
+<div><a href="/img/cptdfw-lb/lbpip.fwip.flow.png"><picture> <source type="image/webp" srcset=" /img/cptdfw-lb/6aZFS5QM17-320.webp 320w , /img/cptdfw-lb/6aZFS5QM17-640.webp 640w , /img/cptdfw-lb/6aZFS5QM17-960.webp 960w ," > <img
+      loading="lazy"
+      alt="asymetric flow with firewall and loadbalancer"
+      src="/img/cptdfw-lb/6aZFS5QM17-320.jpeg"
+      sizes="(max-width: 320px) 320px, (min-width: 640px) 640px, (min-width: 960px) 960px, 100vw"
+      srcset=" /img/cptdfw-lb/6aZFS5QM17-320.jpeg 320w , /img/cptdfw-lb/6aZFS5QM17-640.jpeg 640w , /img/cptdfw-lb/6aZFS5QM17-960.jpeg 960w ,"> </picture></a></div>
+<p><a href="/img/cptdfw-lb/lbpip.fwip.flow.png">Image: asymetric flow with firewall and loadbalancer</a></p>
+<blockquote>
+<p>Conclusion: lb-pip is still available from outside but the response is no longer delivered because the fw does not see the whole flow.</p>
+</blockquote>
+<h2 id="into-the-nating-rabbit-hole" tabindex="-1">Into the NATing rabbit hole <a class="direct-link" href="#into-the-nating-rabbit-hole" aria-hidden="true">#</a></h2>
+<hr>
+<p>Now that we started looking deeper into NATing it would be interesting to understand the whole flow in more detail.</p>
+<p>Again Jose Moreno did write an execellent <a href="https://docs.microsoft.com/en-us/azure/architecture/example-scenario/gateway/firewall-application-gateway">article</a> about it right at the Azure Architecture center.</p>
+<p>The articel does cover the FW and Azure Application Gateway case which is not the one we are looking into. It does tell us still a lot about how NAT does take place in combination with Azure fw.</p>
+<p>We will combine this with the insides Jose Moreno shared on his own <a href="https://blog.cloudtrooper.net/2020/11/28/dont-let-your-azure-routes-bite-you/">blog</a> about how the Azure fw is setup internally :</p>
+<p><em>Essentially, an Azure Firewall is composed of two or more multiple instances with two load balancers in front of them: a public one (to get traffic from the public Internet), and an internal one (to get traffic from on-premises or the rest of the Azure Virtual Network environment). Something like this:</em></p>
+<p><img src="/img/cptdfw-lb/internal-structure-of-azure-firewall.png" alt="Image: Internal structure of Azure Firewall"></p>
+<p>Let´s start small. Let´s make the following assumption.<br>
+Let´s assume the firewall would act as it´s own client and would like to send a request to the vm.<br>
+The public loadblancer which is part of the Azure Firewall structure would nat the request via his public ip.<br>
+The flow would look as follow:</p>
+<div><a href="/img/cptdfw-lb/fwip.flow.png"><picture> <source type="image/webp" srcset=" /img/cptdfw-lb/Lv5SI9wF5s-320.webp 320w , /img/cptdfw-lb/Lv5SI9wF5s-640.webp 640w , /img/cptdfw-lb/Lv5SI9wF5s-960.webp 960w ," > <img
+      loading="lazy"
+      alt="asymetric flow from firewall vm to vm via loadbalancer"
+      src="/img/cptdfw-lb/Lv5SI9wF5s-320.jpeg"
+      sizes="(max-width: 320px) 320px, (min-width: 640px) 640px, (min-width: 960px) 960px, 100vw"
+      srcset=" /img/cptdfw-lb/Lv5SI9wF5s-320.jpeg 320w , /img/cptdfw-lb/Lv5SI9wF5s-640.jpeg 640w , /img/cptdfw-lb/Lv5SI9wF5s-960.jpeg 960w ,"> </picture></a></div>
+<p><a href="/img/cptdfw-lb/fwip.flow.png">Image: asymetric flow from firewall vm to vm via loadbalancer</a></p>
+<p>Ok we understand now how the flow looks if the request would have been triggered by the fw. But the true is, the fw will not trigger the request. Request will be triggered by the client via his pip.</p>
+<p>So we are going to look into how this works.<br>
+But to keep things simple we will simplfy what happens between step 2 and 3.<br>
+There we would see the request flow which has been presented already on our last diagram (between fw and vm via lb).</p>
+<p>Let us have a look at the flow without showing the flow to the vm in detail:</p>
+<div><a href="/img/cptdfw-lb/clientpip.flow.png"><picture> <source type="image/webp" srcset=" /img/cptdfw-lb/9NhThUTWbZ-320.webp 320w , /img/cptdfw-lb/9NhThUTWbZ-640.webp 640w , /img/cptdfw-lb/9NhThUTWbZ-960.webp 960w ," > <img
+      loading="lazy"
+      alt="asymetric flow with firewall and loadbalancer"
+      src="/img/cptdfw-lb/9NhThUTWbZ-320.jpeg"
+      sizes="(max-width: 320px) 320px, (min-width: 640px) 640px, (min-width: 960px) 960px, 100vw"
+      srcset=" /img/cptdfw-lb/9NhThUTWbZ-320.jpeg 320w , /img/cptdfw-lb/9NhThUTWbZ-640.jpeg 640w , /img/cptdfw-lb/9NhThUTWbZ-960.jpeg 960w ,"> </picture></a></div>
+<p><a href="/img/cptdfw-lb/clientpip.flow.png">Image: asymetric flow with firewall and loadbalancer</a></p>
+<p>Now let´s put all togther and see how it looks:</p>
+<div><a href="/img/cptdfw-lb/clientpip.total.flow.png"><picture> <source type="image/webp" srcset=" /img/cptdfw-lb/rpKNolh_lB-320.webp 320w , /img/cptdfw-lb/rpKNolh_lB-640.webp 640w , /img/cptdfw-lb/rpKNolh_lB-960.webp 960w ," > <img
+      loading="lazy"
+      alt="asymetric flow with firewall and loadbalancer"
+      src="/img/cptdfw-lb/rpKNolh_lB-320.jpeg"
+      sizes="(max-width: 320px) 320px, (min-width: 640px) 640px, (min-width: 960px) 960px, 100vw"
+      srcset=" /img/cptdfw-lb/rpKNolh_lB-320.jpeg 320w , /img/cptdfw-lb/rpKNolh_lB-640.jpeg 640w , /img/cptdfw-lb/rpKNolh_lB-960.jpeg 960w ,"> </picture></a></div>
+<p><a href="/img/cptdfw-lb/clientpip.total.flow.png">Image: asymetric flow with firewall and loadbalancer</a></p>
+<p>QUESTION: Based on the tcp logs from the vm no traffic does hit the vm if we send a request via lb-pip. How does fw know that it needs to block the traffic?</p>
+<p>NOTE: I believe this is done via the Azure SDN. It seems to keep some kind of flow table which tells him right away that this is not going to work at all and therefore the request does not hit our vm at all.&lt;/</p>
+<h2 id="tip" tabindex="-1">Tip <a class="direct-link" href="#tip" aria-hidden="true">#</a></h2>
+<hr>
+<p>You can turn off and on your firewall in case you like to play with it.</p>
+<pre class="language-text"><code class="language-text">$azfw = Get-AzFirewall -Name cptdfw -ResourceGroupName cptdfw<br>$azfw.Deallocate()<br>Set-AzFirewall -AzureFirewall $azfw</code></pre>
+
+<hr>
+<ul><li>Previous: <a href="/posts/cptdagw-waf/">Azure Application Gateway, WAF and Certificate</a></li>
+</ul>
+
+    </main>
+
+    <footer></footer>
+    <!-- Current page: /posts/cptdfw-lb/ -->
+  </body>
+</html>
