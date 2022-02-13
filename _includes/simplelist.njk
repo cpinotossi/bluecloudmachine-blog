@@ -1,0 +1,7 @@
+<ol class="list" style="counter-reset: start-from {{ (list.length) + 1 }}">
+{% for entry in list %}
+  <li>
+    <code>{{ entry }}</code>
+  </li>
+{% endfor %}
+</ol>

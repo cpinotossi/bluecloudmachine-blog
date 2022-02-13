@@ -10,8 +10,6 @@ body {
 p:last-child {
   margin-bottom: 0;
 }
-p,
-.tmpl-post li,
 
 hr {
   border-top: 1px solid #d1caca;

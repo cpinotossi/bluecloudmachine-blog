@@ -1,0 +1,7 @@
+<ol class="githubiplist" style="counter-reset: start-from {{ (githubiplistCounter or githubiplist.length) + 1 }}">
+{% for ip in githubiplist %}
+  <li>
+    <code>{{ ip }}</code>
+  </li>
+{% endfor %}
+</ol>

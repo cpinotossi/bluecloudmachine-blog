@@ -50,4 +50,19 @@
     <loc>https://bluecloudmachine.org/posts/cptdfw-lb/</loc>
     <lastmod>2021-12-25</lastmod>
   </url>
+  
+  <url>
+    <loc>https://bluecloudmachine.org/blankblog/</loc>
+    <lastmod>2022-02-13</lastmod>
+  </url>
+  
+  <url>
+    <loc>https://bluecloudmachine.org/posts/azregions/</loc>
+    <lastmod>2022-02-13</lastmod>
+  </url>
+  
+  <url>
+    <loc>https://bluecloudmachine.org/posts/github-ips/</loc>
+    <lastmod>2022-02-13</lastmod>
+  </url>
 </urlset>

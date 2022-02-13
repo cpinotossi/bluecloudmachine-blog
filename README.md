@@ -61,9 +61,13 @@ git branch --all
 git diff master remotes/origin/master
 git fetch origin master
 git merge origin/master
+
+curl -H "Accept: application/vnd.github.v3+json" https://api.github.com/meta -o _data/githubips.json
 ~~~
 
 
+# Links
+- https://docs.github.com/en/actions/using-github-hosted-runners/about-github-hosted-runners#ip-addresses
 
 
 
