@@ -10,6 +10,8 @@ startedgeguest --url http://localhost:8080
 
 ## Create the azure resources.
 
+az ad sp list --all --query "[?displayName=='${prefix}']"
+
 ~~~ text
 prefix=cptdjamstack
 spid=$(az ad sp list --all --query "[?displayName=='${prefix}'].objectId" -o tsv)
@@ -37,7 +39,7 @@ az account list-locations --query "[?not_null(metadata.latitude)].name" > _data/
 npm run build
 npm run start
 git add *
-git commit -m"new blog entry"
+git commit -m"add new blog"
 git push origin master
 startedgeguest --url https://cptdjamstack.z13.web.core.windows.net/
 startedgeguest --url https://blog.bluecloudmachine.org
