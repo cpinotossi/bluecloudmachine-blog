@@ -40,6 +40,17 @@ resource sac 'Microsoft.Storage/storageAccounts/blobServices/containers@2021-06-
 }
 
 var roleStorageBlobDataContributorName = 'ba92f5b4-2d11-453d-a403-e96b0029c9fe' //Storage Blob Data Contributor
+var roleContributorName = 'b24988ac-6180-42a0-ab88-20f7382dd24c' //Contributor
+
+// resource racontributorSp 'Microsoft.Authorization/roleAssignments@2020-10-01-preview' = {
+//   name: guid(resourceGroup().id,'racontributortSp')
+//   scope: sa
+//   properties: {
+//     principalId: objectIdSp
+//     principalType:'ServicePrincipal'
+//     roleDefinitionId: tenantResourceId('Microsoft.Authorization/RoleDefinitions',roleContributorName)
+//   }
+// }
 
 resource rablobcontributorSp 'Microsoft.Authorization/roleAssignments@2018-01-01-preview' = {
   name: guid(resourceGroup().id,'rablobcontributortSp')

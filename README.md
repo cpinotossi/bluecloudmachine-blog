@@ -39,7 +39,7 @@ az account list-locations --query "[?not_null(metadata.latitude)].name" > _data/
 npm run build
 npm run start
 git add *
-git commit -m"add new blog"
+git commit -m"try fix workflow"
 git push origin master
 startedgeguest --url https://cptdjamstack.z13.web.core.windows.net/
 startedgeguest --url https://blog.bluecloudmachine.org
@@ -58,6 +58,7 @@ az group delete -n $prefix -y
 This tutorial does expect that you already created an Service Principal. If this is not the case follow the instruction mentioned [here](https://docs.microsoft.com/en-us/azure/storage/blobs/storage-blobs-static-site-github-actions?tabs=userlevel).
 
 ~~~ text
+subid=$(az account show --query id -o tsv)
 az ad sp create-for-rbac --name $prefix --role contributor --scopes /subscriptions/$subid/resourceGroups/$prefix --sdk-auth
 ~~~
 
