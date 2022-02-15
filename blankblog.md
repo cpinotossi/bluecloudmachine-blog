@@ -7,10 +7,9 @@ tags:
 ---
 
 Example
-Based on GitHub [Metadata](https://docs.github.com/en/rest/reference/meta#get-github-meta-information)
 
-{% set githubiplist = githubips.actions %}
+{% set list = <DATAFILE>.actions %}
 
-Total Number of GitHub Action/Runner IPs: {{ githubiplist.length }}
+Total Number of GitHub Action/Runner IPs: {{ <DATAFILE>.length }}
 
-{% include "githubiplist.njk" %}
+{% include "simplelist.njk" %}

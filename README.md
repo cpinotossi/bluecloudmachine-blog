@@ -34,10 +34,18 @@ curl -v $ssurl/test.txt
 Create a new CDN edge location blog entry
 
 ~~~ text
-cp blankblog.md posts/azregions.md
 az account list-locations --query "[?not_null(metadata.latitude)].name" > _data/azregions.json
+code _data/azregions.json
+jq . _data/azregions.json
+code blankblog.md
+cp blankblog.md posts/azregions.md
+sed -i 's/<DATAFILE>/azregions/g' posts/azregions.md
+code posts/azregions.md
 npm run build
 npm run start
+startedgeguest --url http://localhost:8080/
+code posts/azregions.md
+git status
 git add *
 git commit -m"try fix workflow"
 git push origin master
@@ -132,3 +140,5 @@ grep -F '![' posts/* | sort | uniq -c
 
 Get it done with resource script instead like here:
 https://github.com/Azure/azure-quickstart-templates/blob/master/quickstarts/microsoft.storage/storage-static-website/scripts/enable-static-website.ps1
+
+[Bicep Script Resource](https://docs.microsoft.com/en-us/azure/templates/microsoft.resources/deploymentscripts?tabs=bicep)

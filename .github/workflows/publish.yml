@@ -14,10 +14,10 @@ jobs:
     - uses: azure/login@v1
       with:
           creds: ${{ secrets.cptdjamstack }}
-    - name: add github runner ip to storage acl
-      run: |
-            runnerip=$(curl ipconfig.io)
-            az storage account network-rule add -g cptdjamstack --account-name cptdjamstack --ip-address $runnerip
+    # - name: add github runner ip to storage acl
+    #   run: |
+    #         runnerip=$(curl ipconfig.io)
+    #         az storage account network-rule add -g cptdjamstack --account-name cptdjamstack --ip-address $runnerip
     - name: Upload to blob storage
       uses: azure/CLI@v1
       with:
@@ -28,10 +28,10 @@ jobs:
     #  with:
     #    inlineScript: |
     #       az cdn endpoint purge --content-paths  "/*" --profile-name "CDN_PROFILE_NAME" --name "CDN_ENDPOINT" --resource-group "RESOURCE_GROUP"
-    - name: remove github runner ip to storage acl
-      run: |
-            runnerip=$(curl ipconfig.io)
-            az storage account network-rule remove -g cptdjamstack --account-name cptdjamstack --ip-address $runnerip
+    # - name: remove github runner ip to storage acl
+    #   run: |
+    #         runnerip=$(curl ipconfig.io)
+    #         az storage account network-rule remove -g cptdjamstack --account-name cptdjamstack --ip-address $runnerip
   # Azure logout
     - name: logout
       run: |

@@ -1,4 +1,8 @@
 README.md
-posts.back/**
-posts.back2/**
 blankblog.md
+bicep/**
+misc/**
+.gitignore
+LICENSE
+package-lock.json
+package.json
