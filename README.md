@@ -34,6 +34,8 @@ curl -v $ssurl/test.txt
 Create a new CDN edge location blog entry
 
 ~~~ text
+npm run start
+startedgeguest --url http://localhost:8080/
 az account list-locations --query "[?not_null(metadata.latitude)].name" > _data/azregions.json
 code _data/azregions.json
 jq . _data/azregions.json
@@ -42,11 +44,9 @@ cp blankblog.md posts/azregions.md
 sed -i 's/<DATAFILE>/azregions/g' posts/azregions.md
 code posts/azregions.md
 npm run build
-npm run start
-startedgeguest --url http://localhost:8080/
-code posts/azregions.md
 git status
 git add *
+git status
 git commit -m"try fix workflow"
 git push origin master
 startedgeguest --url https://cptdjamstack.z13.web.core.windows.net/
